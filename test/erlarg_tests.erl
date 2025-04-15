@@ -22,6 +22,22 @@ parse_any_test_() ->
 
     ].
 
+multi_params_test_() ->
+    Spec = #{ syntax => [a, b],
+              parameters => #{
+                a => #param{ short = "-a", param = [string, int]},
+                b => #param{ short = "-b", param = [{item1, string}, {item2, string}]}
+               }
+            },
+    Test = fun (Args) ->
+                   {ok, Tree} = erlarg:parse(Args, Spec),
+                   Tree
+           end,
+    [?_assertEqual([{a, ["abc", 1]}, {b, [{item1, "def"}, {item2, "2"}]}],
+                   Test(["-a", "abc", "1", "-b", "def", "2"]))
+    ].
+
+
 parse_big_test_() ->
     Test = fun (Args) ->
                    {ok, Tree} = erlarg:parse(Args, spec()),

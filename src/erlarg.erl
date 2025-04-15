@@ -12,12 +12,14 @@
 -type spec() :: map().
 
 
-parse(Args, Spec) ->
-    case parse(Spec, maps:get(syntax, Spec, {any, [string]}), Args, []) of
+parse(Args, Spec = #{ syntax := Syntax }) ->
+    case parse(Spec, Syntax, Args, []) of
         {error, _} = Error -> Error;
         {Tree, []} -> {ok, ?REV(Tree)};
         {Tree, Remaining} -> {ok, Tree, Remaining}
-    end.
+    end;
+parse(Args, _) ->
+    Args.
 
 parse(_, [], Args, Acc) ->
     {Acc, Args};
@@ -34,13 +36,16 @@ parse(Spec, {first, Syntax}, Args, Acc) ->
         {Acc2, Args2} -> {Acc2, Args2}
     end;
 parse(Spec, [Item | Syntax], Args, Acc) when is_list(Syntax) ->
+    io:fwrite("item: ~p -> acc: ~p~n", [Item, Acc]),
     case parse(Spec, Item, Args, Acc) of
         {error, _} = Error -> Error;
         {Acc2, Args2} -> parse(Spec, Syntax, Args2, Acc2)
     end;
 parse(Spec, Item, Args, Acc) ->
+    io:fwrite("item: ~p~n", [Item]),
     case find_param(Spec, Item, Args) of
         {ok, Type, Args2} ->
+            io:fwrite("param: ~p~n", [Type]),
             case consume(Spec, Type, Args2) of
                 {noparam, Args3} ->
                     {[Item | Acc], Args3};
@@ -144,17 +149,7 @@ consume(Spec, #param{ syntax = Syntax }, Args) ->
         {Value, Args2} -> {ok, ?REV(Value), Args2}
     end;
 consume(Spec, Params, Args) when is_list(Params) ->
-    Fun = fun (_, {error, _} = Error) ->
-                  Error;
-              (Param, {Acc, Args2}) ->
-                  case consume(Spec, Param, Args2) of
-                      {ok, Value, Args3} ->
-                          {ok, [Value | Acc], Args3};
-                      Error ->
-                          Error
-                  end
-          end,
-    lists:foldl(Fun, {ok, [], Args}, Params);
+    consume(Spec, Params, Args, []);
 consume(#{ types := Types }, Type, Args) ->
     case maps:find(Type, Types) of
         {ok, Fun} when is_function(Fun, 1) ->
@@ -169,6 +164,16 @@ consume(#{ types := Types }, Type, Args) ->
     end;
 consume(_, Type, _) ->
     {error, {undef_type, Type}}.
+
+consume(_, [], Args, Acc) ->
+    {ok, ?REV(Acc), Args};
+consume(Spec, [Param | Params], Args, Acc) ->
+    case consume(Spec, Param, Args) of
+        {ok, Value, Args2} ->
+            consume(Spec, Params, Args2, [Value | Acc]);
+        Error ->
+            Error
+    end.
 
 to_int(String) ->
     case catch list_to_integer(String) of
