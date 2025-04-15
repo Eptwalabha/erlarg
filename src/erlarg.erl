@@ -1,183 +1,159 @@
 -module(erlarg).
 
 -export([parse/2]).
+-export([param/3]).
 
 -include("erlarg.hrl").
 
 -define(REV(List), lists:reverse(List)).
 
--type type() :: int | string.
 -type args() :: [string()].
--type param() :: #param{}.
+-type base_type() :: int | string.
+-type type() :: base_type() | atom().
 -type spec() :: map().
 
+-opaque param() :: #param{}.
+-opaque syntax() :: [syntax()] | {any | first, [syntax()]}
+                  | type() | {any(), type()}.
 
-parse(Args, Spec = #{ syntax := Syntax }) ->
-    case parse(Spec, Syntax, Args, []) of
-        {error, _} = Error -> Error;
-        {Tree, []} -> {ok, ?REV(Tree)};
-        {Tree, Remaining} -> {ok, Tree, Remaining}
+-export_type([param/0, syntax/0,
+              spec/0, args/0
+             ]).
+
+-spec param(Command, Syntax, Doc) -> Param when
+      Command :: string() | undefined
+                 | {string() | undefined, string() | undefined},
+      Syntax :: syntax(),
+      Doc :: string() | binary(),
+      Param :: param().
+
+param({Short, Long}, Syntax, Doc) ->
+    #param{ short = Short, long = Long,
+            syntax = Syntax,
+            doc = Doc };
+param(Short, Syntax, Doc) ->
+    param({Short, undefined}, Syntax, Doc).
+
+
+-spec to_int(String) -> Result when
+      String :: string(),
+      Result :: {ok, integer()} | error.
+
+to_int(String) ->
+    try list_to_integer(String) of
+        Int -> {ok, Int}
+    catch
+        error:_ -> error
+    end.
+
+parse(Args, #{ syntax := Syntax } = Specs) ->
+    case parse(Specs, Syntax, Args, []) of
+        none -> none;
+        {Acc, []} -> {ok, ?REV(Acc)}
     end;
 parse(Args, _) ->
-    Args.
+    {ok, Args}.
+
 
 parse(_, [], Args, Acc) ->
     {Acc, Args};
 parse(_, _, [], Acc) ->
     {Acc, []};
-parse(Spec, {any, Syntax}, Args, Acc) ->
-    case first(Spec, Syntax, Args, Acc) of
-        nomatch -> {Acc, Args};
-        {Acc2, Args2} -> parse(Spec, {any, Syntax}, Args2, Acc2)
+parse(Specs, {any, Syntax}, Args, Acc) ->
+    case parse(Specs, {first, Syntax}, Args, Acc) of
+        none -> {Acc, Args};
+        {Acc2, Args2} -> parse(Specs, {any, Syntax}, Args2, Acc2)
     end;
-parse(Spec, {first, Syntax}, Args, Acc) ->
-    case first(Spec, Syntax, Args, Acc) of
-        nomatch -> {error, nomatch};
-        {Acc2, Args2} -> {Acc2, Args2}
+parse(_, {first, []}, _, _) ->
+    none;
+parse(Specs, {first, [Item | Syntax]}, Args, Acc) ->
+    case parse(Specs, Item, Args, Acc) of
+        none -> parse(Specs, {first, Syntax}, Args, Acc);
+        {Acc2, Args2} ->
+            {Acc2, Args2}
     end;
-parse(Spec, [Item | Syntax], Args, Acc) when is_list(Syntax) ->
-    io:fwrite("item: ~p -> acc: ~p~n", [Item, Acc]),
-    case parse(Spec, Item, Args, Acc) of
-        {error, _} = Error -> Error;
-        {Acc2, Args2} -> parse(Spec, Syntax, Args2, Acc2)
+parse(Specs, [Item | Syntax], Args, Acc) ->
+    case parse(Specs, Item, Args, Acc) of
+        none -> none;
+        {Acc2, Args2} -> parse(Specs, Syntax, Args2, Acc2)
     end;
-parse(Spec, Item, Args, Acc) ->
-    io:fwrite("item: ~p~n", [Item]),
-    case find_param(Spec, Item, Args) of
-        {ok, Type, Args2} ->
-            io:fwrite("param: ~p~n", [Type]),
-            case consume(Spec, Type, Args2) of
-                {noparam, Args3} ->
-                    {[Item | Acc], Args3};
-                {ok, Value, Args3} ->
-                    {[Value | Acc], Args3};
-                {error, _} = Error ->
-                    Error
+parse(Specs, {Name, Syntax}, Args, Acc) ->
+    case parse(Specs, Syntax, Args, []) of
+        {Value, Args2} ->
+            {[commit_value(Syntax, Name, Value) | Acc], Args2}; 
+        none -> none
+    end;
+parse(Specs, BaseType, Args, Acc)
+  when BaseType =:= int; BaseType =:= string;
+       BaseType =:= binary ->
+    case consume(Specs, BaseType, Args) of
+        {ok, Value, Args2} ->
+            {[Value | Acc], Args2};
+        {error, _} ->
+            none
+    end;
+parse(Specs, ParamName, Args, Acc)
+  when is_atom(ParamName) ->
+    case fetch(Specs, ParamName) of
+        {param, #param{ syntax = Syntax } = Param} ->
+            case parse(Specs, Param, Args, []) of
+                {Value, Args2} ->
+                    {[commit_value(Syntax, ParamName, Value) | Acc], Args2}; 
+                none -> none
             end;
-        {error, _} = Error -> Error;
-        nomatch -> nomatch
-    end.
-
-
-first(_, [], _, _) ->
-    nomatch;
-first(Spec, [Item | Syntax], Args, Acc) ->
-    case parse(Spec, Item, Args, Acc) of
-        {error, _} -> first(Spec, Syntax, Args, Acc);
-        nomatch -> first(Spec, Syntax, Args, Acc);
-        {Acc2, Args2} -> {Acc2, Args2}
-    end.
-
-
--spec find_param(Spec, Item, Args) -> {ok, Param, Args} | Error when
-      Spec :: spec(),
-      Item :: {any(), type()} | type() | atom(),
-      Args :: args(),
-      Param :: param() | type() | {any(), type()},
-      Error :: nomatch | {error, any()}.
-
-find_param(Spec, {Name, Type}, Args) ->
-    case find_param(Spec, Type, Args) of
-        {ok, Param, Args2} -> {ok, {Name, Param}, Args2};
-        nomatch ->
-            nomatch;
-        {error, _} = Error -> Error
+        {type, Fun} when is_function(Fun, 1) ->
+            parse(Specs, Fun, Args, Acc);
+        not_found ->
+            none
     end;
-find_param(_, Type, Args) when Type =:= int; Type =:= string ->
-    {ok, Type, Args};
-find_param(Spec, Param_name, [_ | _] = Args) when is_atom(Param_name) ->
-    case get_param(Spec, Param_name) of
-        {ok, #param{} = Param} ->
-            case param_matches(Param, Args) of
-                {true, Args2} ->
-                    {ok, {Param_name, Param}, Args2};
-                false ->
-                    nomatch
-            end;
-        error ->
-            {error, {undef_param, Param_name}}
-    end.
-
-get_param(#{ parameters := Params }, Name) ->
-    maps:find(Name, Params);
-get_param(_, _) ->
-    error.
-
-param_matches(#param{ short = undefined, long = undefined }, Args) ->
-    {true, Args};
-param_matches(#param{ short = Short, long = Long }, [Arg | Args])
+parse(Specs, #param{ short = Short, long = Long } = Param, [Arg | Args], Acc)
   when Arg =:= Short; Arg =:= Long ->
-    {true, Args};
-param_matches(Param, [Arg | Args]) ->
+    case Param#param.syntax of
+        undefined -> {[novalue | Acc], Args};
+        Syntax -> parse(Specs, Syntax, Args, Acc)
+    end;
+parse(Specs, #param{ short = undefined, long = undefined } = Param, Args, Acc) ->
+    case Param#param.syntax of
+        undefined -> {[novalue | Acc], Args};
+        Syntax -> parse(Specs, Syntax, Args, Acc)
+    end;
+parse(Specs, #param{ long = Long } = Param, [Arg | Args], Acc) ->
     case string:split(Arg, "=") of
-        [Left, Value] ->
-            param_matches(Param, [Left, Value | Args]);
-        [_] ->
-            false
+        [Long, Value] ->
+            parse(Specs, Param, [Long, Value | Args], Acc);
+        _ -> none
+    end;
+parse(_, Fun, Args, Acc)
+  when is_function(Fun, 1) ->
+    case Fun(Args) of
+        {error, _} -> none;
+        {Value, Args2} -> {[Value | Acc], Args2}
     end.
 
+commit_value(_, Name, [novalue]) -> Name;
+commit_value(Syntax, Name, [Value])
+  when not is_list(Syntax) ->
+    {Name, Value};
+commit_value(_, Name, Values)
+  when is_list(Values) ->
+    {Name, ?REV(Values)}.
 
--spec consume(Spec, Type, Args) -> Result | Error when
-      Spec :: spec(),
-      Type :: any(),
-      Args :: args(),
-      Result :: {ok, any(), args()},
-      Error :: {error, any()}.
+fetch(#{} = Specs, Name) ->
+    case maps:find(Name, maps:get(parameters, Specs, #{})) of
+        {ok, #param{} = Param} -> {param, Param};
+        _ ->
+            case maps:find(Name, maps:get(types, Specs, #{})) of
+                {ok, Fun} when is_function(Fun, 1) -> {type, Fun};
+                _ -> not_found
+            end
+    end.
 
-consume(_, #param{ syntax = undefined, param = undefined }, Args) ->
-    {noparam, Args};
-consume(Spec, {Name, Type}, Args) ->
-    case consume(Spec, Type, Args) of
-        {noparam, Args2} -> {noparam, Args2};
-        {ok, Value, Args2} -> {ok, {Name, Value}, Args2};
-        {error, Error} -> {error, {Name, Error}}
-    end;
-consume(_, _, []) ->
-    {error, missing_arg};
 consume(_, int, [Arg | Args]) ->
     case to_int(Arg) of
         {ok, Int} -> {ok, Int, Args};
         _ -> {error, {badarg, Arg}}
     end;
+consume(_, binary, [String | Args]) ->
+    {ok, list_to_binary(String), Args};
 consume(_, string, [String | Args]) ->
-    {ok, String, Args};
-consume(Spec, #param{ syntax = undefined, param = Params }, Args) ->
-    consume(Spec, Params, Args);
-consume(Spec, #param{ syntax = Syntax }, Args) ->
-    case parse(Spec, Syntax, Args, []) of
-        {error, _} = Error -> Error;
-        {Value, Args2} -> {ok, ?REV(Value), Args2}
-    end;
-consume(Spec, Params, Args) when is_list(Params) ->
-    consume(Spec, Params, Args, []);
-consume(#{ types := Types }, Type, Args) ->
-    case maps:find(Type, Types) of
-        {ok, Fun} when is_function(Fun, 1) ->
-            case Fun(Args) of
-                {error, Error} ->
-                    {error, Error};
-                {Value, Args2} ->
-                    {ok, Value, Args2}
-            end;
-        error ->
-            {error, {undef_type, Type}}
-    end;
-consume(_, Type, _) ->
-    {error, {undef_type, Type}}.
-
-consume(_, [], Args, Acc) ->
-    {ok, ?REV(Acc), Args};
-consume(Spec, [Param | Params], Args, Acc) ->
-    case consume(Spec, Param, Args) of
-        {ok, Value, Args2} ->
-            consume(Spec, Params, Args2, [Value | Acc]);
-        Error ->
-            Error
-    end.
-
-to_int(String) ->
-    case catch list_to_integer(String) of
-        Int when is_integer(Int) -> {ok, Int};
-        _ -> error
-    end.
-
+    {ok, String, Args}.

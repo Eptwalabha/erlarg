@@ -1,2 +1,2 @@
--record(param, { short, long, param, syntax }).
+-record(param, { short, long, param, syntax, doc }).
 

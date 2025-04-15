@@ -1,0 +1,11 @@
+#!/bin/bash
+
+make lint
+make dialyzer
+while inotifywait --event modify -r src test --exclude '\..*\.swp';
+do
+    make lint
+    make dialyzer
+    rebar3 do compile, eunit --module=erlarg, cover
+done
+
