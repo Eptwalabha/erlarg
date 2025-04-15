@@ -11,7 +11,7 @@ add these lines to your `rebar.config`:
  {erlarg, {git, "https://github.com/eptwalabha/erlarg.git", {branch, "master"}}}
  ]}.
 
-# if you plan on building an escript
+% if you plan on building an escript
 {escript_incl_apps, [...
  erlarg
  ]}.
