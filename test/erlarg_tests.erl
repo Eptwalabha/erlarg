@@ -3,17 +3,18 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("erlarg.hrl").
 
-parse_bad_spec_test_() ->
-    SpecWithoutSyntax = #{},
-    [?_assertEqual({ok, ["a", "b", "c"]},
-                   parse(["a", "b", "c"], SpecWithoutSyntax))].
+parse_syntax_directly_test_() ->
+    [?_assertEqual(["a", "b", "c"], parse(["a", "b", "c"], {any, [string]})),
+     ?_assertEqual([1, 2, 3], parse(["1", "2", "3"], {any, [int]}))
+    ].
 
 parse_any_test_() ->
     Test = fun (Args, Syntax) ->
-                   {ok, Tree} = parse(Args, spec(Syntax)),
-                   Tree
+                   parse(Args, Syntax)
            end,
     [?_assertEqual([123], Test(["123"], int)),
+     ?_assertEqual([123.0], Test(["123"], float)),
+     ?_assertEqual([123.4], Test(["123.4"], float)),
      ?_assertEqual(["123"], Test(["123"], string)),
      ?_assertEqual([{toto, 123}], Test(["123"], {toto, int})),
      ?_assertEqual(["-a", "2"], Test(["-a", "2"], {any, [string]})),
@@ -40,17 +41,19 @@ parse_any_test_() ->
                         [binary, {a, binary}, {b, [binary]}]))
     ].
 
+parse_base_type_test_() ->
+    [].
+
 multi_params_test_() ->
     Spec = #{ syntax => [a, b],
-              parameters => #{
+              definitions => #{
                 a => #param{ short = "-a", syntax = [string, int]},
                 b => #param{ short = "-b",
                              syntax = [{item1, string}, {item2, string}]}
                }
             },
     Test = fun (Args) ->
-                   {ok, Tree} = parse(Args, Spec),
-                   Tree
+                   parse(Args, Spec)
            end,
     [?_assertEqual([{a, ["abc", 1]}, {b, [{item1, "def"}, {item2, "2"}]}],
                    Test(["-a", "abc", "1", "-b", "def", "2"]))
@@ -59,8 +62,7 @@ multi_params_test_() ->
 
 parse_big_test_() ->
     Test = fun (Args) ->
-                   {ok, Tree} = parse(Args, spec()),
-                   Tree
+                   parse(Args, spec())
            end,
     [?_assertEqual([version], Test(["-v"])),
      ?_assertEqual([help, help, {source, [stdin, {path, "toto.tsv"}]}],
@@ -78,7 +80,7 @@ parse_big_test_() ->
     ].
 
 parse_p_test_() ->
-    Spec = #{ parameters => #{
+    Spec = #{ definitions => #{
                 a => param({"-a", "--a-long"}, {first, [int, string]}),
                 b => param("-b", [{any, [a, [{b, int}, {bs, string}]]},
                                   c]),
@@ -86,8 +88,7 @@ parse_p_test_() ->
                }
             },
     Test = fun (Args, Syntax) ->
-                   {ok, Tree} = parse(Args, Spec#{ syntax => Syntax }),
-                   Tree
+                   parse(Args, Spec#{ syntax => Syntax })
            end,
     [?_assertEqual([{a, 1}, {b, [{b, 2}, {bs, "3"}]}],
                    Test(["--a-long=1", "-b", "2", "3"], [a, b]))
@@ -97,7 +98,8 @@ param(Key, Syntax) ->
     erlarg:param(Key, Syntax, <<"döc"/utf8>>).
 
 parse(Args, Spec) ->
-    erlarg:parse(Args, Spec).
+    {ok, Options} = erlarg:parse(Args, Spec),
+    Options.
 
 
 spec() ->
@@ -106,43 +108,28 @@ spec() ->
 
 spec(Syntax) ->
     #{
-      syntax => Syntax,
+       syntax => Syntax,
 
-      parameters => #{
-                       limit => erlarg:param({"-l", "--long"},
-                                             int,
-                                             "nbr of lines to display"),
-                       filter => erlarg:param({"-g", "--grep"},
-                                              [{any, [invert, columns]},
-                                               {search, string}],
-                                              "filter line"),
-                       invert => erlarg:param({"-v", "--invert-match"},
-                                              undefined,
-                                              "invert the matching selection"),
-                       help => erlarg:param({"-h", "--help"},
-                                            undefined,
-                                            "print this help"),
-                       version => erlarg:param({"-v", "--version"}, undefined,
-                                               "print current version"),
-                       columns => param({"-c", "--columns"}, type_columns),
-                       delimiter_in => param({"-d", "--delimiter"},
-                                             type_delimiter),
-                       delimiter_out => param({undefined, "--out-delimiter"},
-                                              type_delimiter),
-                       stdin => erlarg:param({"-", "--stdin"}, undefined,
-                                             "fetch data from stdin"),
-                       source => erlarg:param(undefined,
-                                              [{any, [stdin, {path, string}]}],
-                                              "data source")
-                     },
+       definitions => #{
+         limit => param({"-l", "--long"}, int),
+         filter => param({"-g", "--grep"},
+                         [{any, [invert, columns]}, {search, string}]),
+         invert => param({"-v", "--invert-match"}, undefined),
+         help => param({"-h", "--help"}, undefined),
+         version => param({"-v", "--version"}, undefined),
+         columns => param({"-c", "--columns"}, type_columns),
+         delimiter_in => param({"-d", "--delimiter"}, type_delimiter),
+         delimiter_out => param({undefined, "--out-delimiter"}, type_delimiter),
+         stdin => param({"-", "--stdin"}, undefined),
+         source => param(undefined, [{any, [stdin, {path, string}]}]),
 
-      types => #{ type_delimiter => fun (["TAB" | Args]) -> {$\t, Args};
-                                   ([[Char] | Args]) -> {Char, Args};
-                                   ([Arg | _]) -> {error, {bad_delimiter, Arg}}
-                               end,
-                  type_columns => fun columns/1
-                }
-     }.
+         type_delimiter => fun (["TAB" | Args]) -> {$\t, Args};
+                               ([[Char] | Args]) -> {Char, Args};
+                               ([Arg | _]) -> {error, {bad_delimiter, Arg}}
+                           end,
+         type_columns => fun columns/1
+        }
+      }.
 
 columns([Item | Args]) ->
     case string:split(Item, "*") of

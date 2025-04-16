@@ -3,12 +3,12 @@
 -export([parse/2]).
 -export([param/3]).
 
--include("erlarg.hrl").
+-record(param, { short, long, syntax, doc }).
 
 -define(REV(List), lists:reverse(List)).
 
 -type args() :: [string()].
--type base_type() :: int | string.
+-type base_type() :: int | float | string | binary.
 -type type() :: base_type() | atom().
 -type spec() :: map().
 
@@ -46,15 +46,32 @@ to_int(String) ->
         error:_ -> error
     end.
 
+-spec to_float(String) -> Result when
+      String :: string(),
+      Result :: {ok, float()} | error.
+
+to_float(String) ->
+    try list_to_float(String) of
+        Float -> {ok, Float}
+    catch
+        error:_ ->
+            case to_int(String) of
+                {ok, Int} -> {ok, float(Int)};
+                _ -> error
+            end
+    end.
+
 parse(Args, #{ syntax := Syntax } = Specs) ->
     case parse(Specs, Syntax, Args, []) of
         none -> none;
         {Acc, []} -> {ok, ?REV(Acc)}
     end;
-parse(Args, _) ->
-    {ok, Args}.
+parse(Args, Syntax) ->
+    parse(Args, #{ syntax => Syntax }).
 
 
+parse(_, undefined, Args, Acc) ->
+    {[novalue | Acc], Args};
 parse(_, [], Args, Acc) ->
     {Acc, Args};
 parse(_, _, [], Acc) ->
@@ -80,12 +97,12 @@ parse(Specs, [Item | Syntax], Args, Acc) ->
 parse(Specs, {Name, Syntax}, Args, Acc) ->
     case parse(Specs, Syntax, Args, []) of
         {Value, Args2} ->
-            {[commit_value(Syntax, Name, Value) | Acc], Args2}; 
+            {[commit_value(Syntax, Name, Value) | Acc], Args2};
         none -> none
     end;
 parse(Specs, BaseType, Args, Acc)
-  when BaseType =:= int; BaseType =:= string;
-       BaseType =:= binary ->
+  when BaseType =:= int; BaseType =:= float;
+       BaseType =:= string; BaseType =:= binary ->
     case consume(Specs, BaseType, Args) of
         {ok, Value, Args2} ->
             {[Value | Acc], Args2};
@@ -94,29 +111,24 @@ parse(Specs, BaseType, Args, Acc)
     end;
 parse(Specs, ParamName, Args, Acc)
   when is_atom(ParamName) ->
-    case fetch(Specs, ParamName) of
-        {param, #param{ syntax = Syntax } = Param} ->
+    case maps:find(ParamName, maps:get(definitions, Specs, #{})) of
+        {ok, #param{ syntax = Syntax } = Param} ->
             case parse(Specs, Param, Args, []) of
                 {Value, Args2} ->
-                    {[commit_value(Syntax, ParamName, Value) | Acc], Args2}; 
+                    {[commit_value(Syntax, ParamName, Value) | Acc], Args2};
                 none -> none
             end;
-        {type, Fun} when is_function(Fun, 1) ->
+        {ok, Fun} when is_function(Fun, 1) ->
             parse(Specs, Fun, Args, Acc);
-        not_found ->
+        error ->
             none
     end;
 parse(Specs, #param{ short = Short, long = Long } = Param, [Arg | Args], Acc)
   when Arg =:= Short; Arg =:= Long ->
-    case Param#param.syntax of
-        undefined -> {[novalue | Acc], Args};
-        Syntax -> parse(Specs, Syntax, Args, Acc)
-    end;
-parse(Specs, #param{ short = undefined, long = undefined } = Param, Args, Acc) ->
-    case Param#param.syntax of
-        undefined -> {[novalue | Acc], Args};
-        Syntax -> parse(Specs, Syntax, Args, Acc)
-    end;
+    parse(Specs, Param#param.syntax, Args, Acc);
+parse(Specs, #param{ short = Same, long = Same } = Param, Args, Acc)
+  when Same =:= undefined ->
+    parse(Specs, Param#param.syntax, Args, Acc);
 parse(Specs, #param{ long = Long } = Param, [Arg | Args], Acc) ->
     case string:split(Arg, "=") of
         [Long, Value] ->
@@ -138,19 +150,14 @@ commit_value(_, Name, Values)
   when is_list(Values) ->
     {Name, ?REV(Values)}.
 
-fetch(#{} = Specs, Name) ->
-    case maps:find(Name, maps:get(parameters, Specs, #{})) of
-        {ok, #param{} = Param} -> {param, Param};
-        _ ->
-            case maps:find(Name, maps:get(types, Specs, #{})) of
-                {ok, Fun} when is_function(Fun, 1) -> {type, Fun};
-                _ -> not_found
-            end
-    end.
-
 consume(_, int, [Arg | Args]) ->
     case to_int(Arg) of
         {ok, Int} -> {ok, Int, Args};
+        _ -> {error, {badarg, Arg}}
+    end;
+consume(_, float, [Arg | Args]) ->
+    case to_float(Arg) of
+        {ok, Float} -> {ok, Float, Args};
         _ -> {error, {badarg, Arg}}
     end;
 consume(_, binary, [String | Args]) ->
