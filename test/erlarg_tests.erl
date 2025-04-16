@@ -1,55 +1,68 @@
 -module(erlarg_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("erlarg.hrl").
 
 parse_syntax_directly_test_() ->
     [?_assertEqual(["a", "b", "c"], parse(["a", "b", "c"], {any, [string]})),
      ?_assertEqual([1, 2, 3], parse(["1", "2", "3"], {any, [int]}))
     ].
 
-parse_any_test_() ->
-    Test = fun (Args, Syntax) ->
-                   parse(Args, Syntax)
-           end,
-    [?_assertEqual([123], Test(["123"], int)),
-     ?_assertEqual([123.0], Test(["123"], float)),
-     ?_assertEqual([123.4], Test(["123.4"], float)),
-     ?_assertEqual(["123"], Test(["123"], string)),
-     ?_assertEqual([{toto, 123}], Test(["123"], {toto, int})),
-     ?_assertEqual(["-a", "2"], Test(["-a", "2"], {any, [string]})),
-     ?_assertEqual(["-a", "2"], Test(["-a", "2"], {any, [string, int]})),
-     ?_assertEqual(["a", 2, "c", 4],
-                   Test(["a", "2", "c", "4"], {any, [int, string]})),
-     ?_assertEqual(["a", {i, 2}, "c", {i, 4}],
-                   Test(["a", "2", "c", "4"],
-                        {any, [{i, int}, string, {n, int}]})),
-     ?_assertEqual(["-a", 2],
-                   Test(["-a", "2"],
-                        [string, int])),
-     ?_assertEqual(["-a", {a, 2}, {b, "-c"}, 4],
-                   Test(["-a", "2", "-c", "4"],
-                        [string, {a, int}, {b, string}, int])),
-     ?_assertEqual([1, 2, "a", "1"],
-                   Test(["1", "2", "a", "1"],
-                        [{any, [int]}, {any, [string]}])),
-     ?_assertEqual([1, {a, 2}, {b, [3]}],
-                   Test(["1", "2", "3"],
-                        [int, {a, int}, {b, [int]}])),
-     ?_assertEqual([<<"1">>, {a, <<"2">>}, {b, [<<"3">>]}],
-                   Test(["1", "2", "3"],
-                        [binary, {a, binary}, {b, [binary]}]))
+parse_basic_types_test_() ->
+    [?_assertEqual([123], parse(["123"], int)),
+     ?_assertEqual([123.0], parse(["123"], float)),
+     ?_assertEqual([123.4], parse(["123.4"], float)),
+     ?_assertEqual(["123"], parse(["123"], string)),
+     ?_assertEqual([<<"äbc"/utf8>>], parse(["äbc"], binary)),
+     ?_assertEqual([{key, 123}], parse(["123"], {key, int})),
+     ?_assertEqual([{key, 123.0}], parse(["123"], {key, float})),
+     ?_assertEqual([{key, 123.4}], parse(["123.4"], {key, float})),
+     ?_assertEqual([{key, "123"}], parse(["123"], {key, string})),
+     ?_assertEqual([{key, <<"äbc"/utf8>>}], parse(["äbc"], {key, binary}))
     ].
 
-parse_base_type_test_() ->
-    [].
+parse_param_test_() ->
+    [?_assertEqual([123],
+                   parse(["-p", "123"], param("-p", int))),
+     ?_assertEqual(["123"],
+                   parse(["--param", "123"], param({"-p", "--param"}, string))),
+     ?_assertEqual([123.0],
+                   parse(["--param=123"], param({"-p", "--param"}, float))),
+     ?_assertEqual([tag],
+                   parse(["-p"], {tag, param({"-p", "--param"})})),
+     ?_assertEqual([<<"äbc"/utf8>>],
+                   parse(["äbc"], param(undefined, binary)))
+    ].
+
+parse_any_test_() ->
+    [?_assertEqual(["-a", "2"], parse(["-a", "2"], {any, [string]})),
+     ?_assertEqual(["-a", "2"], parse(["-a", "2"], {any, [string, int]})),
+     ?_assertEqual(["a", 2, "c", 4],
+                   parse(["a", "2", "c", "4"], {any, [int, string]})),
+     ?_assertEqual(["a", {i, 2}, "c", {i, 4}],
+                   parse(["a", "2", "c", "4"],
+                        {any, [{i, int}, string, {n, int}]})),
+     ?_assertEqual(["-a", 2],
+                   parse(["-a", "2"],
+                        [string, int])),
+     ?_assertEqual(["-a", {a, 2}, {b, "-c"}, 4],
+                   parse(["-a", "2", "-c", "4"],
+                        [string, {a, int}, {b, string}, int])),
+     ?_assertEqual([1, 2, "a", "1"],
+                   parse(["1", "2", "a", "1"],
+                        [{any, [int]}, {any, [string]}])),
+     ?_assertEqual([1, {a, 2}, {b, [3]}],
+                   parse(["1", "2", "3"],
+                        [int, {a, int}, {b, [int]}])),
+     ?_assertEqual([<<"1">>, {a, <<"2">>}, {b, [<<"3">>]}],
+                   parse(["1", "2", "3"],
+                        [binary, {a, binary}, {b, [binary]}]))
+    ].
 
 multi_params_test_() ->
     Spec = #{ syntax => [a, b],
               definitions => #{
-                a => #param{ short = "-a", syntax = [string, int]},
-                b => #param{ short = "-b",
-                             syntax = [{item1, string}, {item2, string}]}
+                a => param("-a", [string, int]),
+                b => param("-b", [{item1, string}, {item2, string}])
                }
             },
     Test = fun (Args) ->
@@ -94,6 +107,9 @@ parse_p_test_() ->
                    Test(["--a-long=1", "-b", "2", "3"], [a, b]))
     ].
 
+param(Key) ->
+    erlarg:param(Key, undefined, <<"döc"/utf8>>).
+
 param(Key, Syntax) ->
     erlarg:param(Key, Syntax, <<"döc"/utf8>>).
 
@@ -114,13 +130,13 @@ spec(Syntax) ->
          limit => param({"-l", "--long"}, int),
          filter => param({"-g", "--grep"},
                          [{any, [invert, columns]}, {search, string}]),
-         invert => param({"-v", "--invert-match"}, undefined),
-         help => param({"-h", "--help"}, undefined),
-         version => param({"-v", "--version"}, undefined),
+         invert => param({"-v", "--invert-match"}),
+         help => param({"-h", "--help"}),
+         version => param({"-v", "--version"}),
          columns => param({"-c", "--columns"}, type_columns),
          delimiter_in => param({"-d", "--delimiter"}, type_delimiter),
          delimiter_out => param({undefined, "--out-delimiter"}, type_delimiter),
-         stdin => param({"-", "--stdin"}, undefined),
+         stdin => param({"-", "--stdin"}),
          source => param(undefined, [{any, [stdin, {path, string}]}]),
 
          type_delimiter => fun (["TAB" | Args]) -> {$\t, Args};

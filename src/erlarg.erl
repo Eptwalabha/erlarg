@@ -161,6 +161,6 @@ consume(_, float, [Arg | Args]) ->
         _ -> {error, {badarg, Arg}}
     end;
 consume(_, binary, [String | Args]) ->
-    {ok, list_to_binary(String), Args};
+    {ok, unicode:characters_to_binary(String), Args};
 consume(_, string, [String | Args]) ->
     {ok, String, Args}.
