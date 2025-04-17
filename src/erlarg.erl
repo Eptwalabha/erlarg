@@ -138,8 +138,8 @@ parse(Specs, #param{ long = Long } = Param, [Arg | Args], Acc) ->
 parse(_, Fun, Args, Acc)
   when is_function(Fun, 1) ->
     case Fun(Args) of
-        {error, _} -> none;
-        {Value, Args2} -> {[Value | Acc], Args2}
+        {ok, Value, Args2} -> {[Value | Acc], Args2};
+        _ -> none
     end.
 
 commit_value(_, Name, [novalue]) -> Name;

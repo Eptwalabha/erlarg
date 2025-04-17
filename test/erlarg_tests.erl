@@ -58,6 +58,25 @@ parse_any_test_() ->
                         [binary, {a, binary}, {b, [binary]}]))
     ].
 
+parse_custom_types_test_() ->
+    CustomFun = fun (["boom" | _]) ->
+                        fails;
+                    ([Arg | Args]) ->
+                        {ok, {length(Args), lists:reverse(Arg)}, Args}
+                end,
+    Spec = fun (Syntax) ->
+                   #{ syntax => Syntax,
+                      definitions => #{
+                        custom => CustomFun
+                       }
+                    }
+           end,
+    [?_assertEqual([{0, "cba"}], parse(["abc"], CustomFun)),
+     ?_assertEqual([{0, "cba"}], parse(["abc"], Spec(custom))),
+     ?_assertEqual([{2, "ba"}, "boom", {0, "dc"}],
+                   parse(["ab", "boom", "cd"], Spec({any, [custom, string]})))
+    ].
+
 multi_params_test_() ->
     Spec = #{ syntax => [a, b],
               definitions => #{
@@ -139,8 +158,8 @@ spec(Syntax) ->
          stdin => param({"-", "--stdin"}),
          source => param(undefined, [{any, [stdin, {path, string}]}]),
 
-         type_delimiter => fun (["TAB" | Args]) -> {$\t, Args};
-                               ([[Char] | Args]) -> {Char, Args};
+         type_delimiter => fun (["TAB" | Args]) -> {ok, $\t, Args};
+                               ([[Char] | Args]) -> {ok, Char, Args};
                                ([Arg | _]) -> {error, {bad_delimiter, Arg}}
                            end,
          type_columns => fun columns/1
@@ -150,5 +169,5 @@ spec(Syntax) ->
 columns([Item | Args]) ->
     case string:split(Item, "*") of
         [_, _] -> {error, {bad_columns, Item}};
-        _ -> {Item, Args}
+        _ -> {ok, Item, Args}
     end.
