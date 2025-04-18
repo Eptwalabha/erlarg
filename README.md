@@ -4,10 +4,11 @@ An Erlang lib that parsed a list of arguments into a structured tree.
 Useful for handling options/parameters of escript
 
 > [!WARNING]
-> This lib is under development and likely to change in the future (see [TODO](#todo) section).  
+> This lib is under development and is likely to change in the future (see [TODO](#todo) section).  
 > If you need a working alternative, you can use [getopt](https://github.com/jcomellas/getopt).
 
-## install
+
+## Installation
 
 Add `erlarg` to in your `rebar.config`:
 ```erlang
@@ -30,12 +31,33 @@ rebar3 compile --deps_only
 That's it, you're done.
 
 ## Usage
-
+Let say your escript program takes a list of parameters like so:
+```bash
+./my-script --limit=20 -m 0.25 --format "%s%t" -o output.tsv -
+```
+The `main/1` function of your script will receive the following list on strings:
+```erlang
+["--limit=20", "-m", "0.25", "--format", "%s%t", "-o", "output.tsv", "-"]
+```
+`erlarg:parse/2` can help you convert this `Args` into a structured data:
 ```erlang
 main(Args) ->
-    Spec = {any, [int, string]},
+    Spec = {any, [{limit, erlarg:param({"-l", "--limit"}, int)},
+                  {format, erlarg:param({"-f", "--format"}, binary)},
+                  {file, erlarg:param("-o", string)},
+                  {stdin, erlarg:param("-")},
+                  {max, erlarg:param({"-m", "--max"}, float)}
+                  ]}
     {ok, Options} = erlarg:parse(Args, Spec),
     ...
+```
+In this exemple, `Options` will be:
+```erlang
+[{limit, 20},
+ {max, 0.25},
+ {format, <<"%s%t">>},
+ {file, "output.tsv"},
+ stdin].
 ```
 
 The `erlarg:parse/2` function takes two parameters:
@@ -46,11 +68,11 @@ The `erlarg:parse/2` function takes two parameters:
 
 The spec is a map of two elements:
 - `syntax`, it's the syntax tree which can be:
-    - base types (`int`, `float`, `string`, `binary`)
-    - a custom [parameter](#parameters)
-    - a custom type
+    - base types (`int`, `float`, `number`, `string`, `binary`, `bool`, `atom`)
+    - a [custom parameter](#parameters)
+    - a [custom type](#custom-type)
     - an operator (`and`, `any`, `first`)
-    - {name, syntax()}
+    - a tuple {key, syntax()}
     - another syntax
 - `definitions`: a map of all the parameters and custom type functions used in `syntax`
 
@@ -60,23 +82,43 @@ The spec is a map of two elements:
 ### Syntax
 
 #### base types
-The parser will try to "consume" the arguments with the given type.
-Currently, there's four basic types available.
+The parser will try to "consume" the arguments with the given types:
 - `int`: the parser will try to parse the string (will fail if arg isn't an `int`)
-- `float`: same as int, but will succeed even if the arg is an integer
-- `string`: does nothing and consume the arg
-- `binary`: return the binary representation of the
+- `float`: same as int, but with float (will also fail if arg is an int)
+- `number`: the parser will try to convert to int, if it fails, it will try to convert to float
+- `string`: returns the given argument
+- `binary`: convert into a the binary
+- `atom`: convert the arg to an atom
+- `bool`: return the boolean value of the arg
 
-See the following table
 | syntax | arg | result | note |
 |---|---|---|---|
 | int | "1" | 1 |-|
-| int | "1.2" | fails | not an int |
+| int | "1.2" | error | not an int |
 | float | "1.2" | 1.2 |-|
 | float | "1" | [1.0] | cast int into float |
 | string | "abc" | "abc" | does nothing |
-| binary | "abc" | <<"abc">> |-|
 | binary | "äbc" | <<"äbc"/utf8>> |-|
+| atom | "super-top" | 'super-top' |-|
+| {is_true, bool} | "0.0" | {is_true, false} | see table bellow |
+
+the `bool` conversion:
+| arg | bool | note |
+|---|---|---|
+| "true" | true | case insensitive |
+| "yes" | true | case insensitive |
+| "yes" | true | any non-empty string |
+| "1" | true ||
+| "0.00001" | true ||
+| "false" | false | case insensitive |
+| "no" | false ||
+| "" | false | empty-string|
+| "0" | false ||
+| "0.0" | false ||
+
+> [!NOTE]
+> When the parser is task to convert an argument as `string`, `binary`, `bool` or `atom` it will always succeed and consume the argument.
+> This detail can be important for some operator like `any`
 
 #### parameters
 TODO
@@ -84,21 +126,19 @@ TODO
 #### operator `and`
 format:
 ```
-{and, [syntax()]}
-% or more simply
 [syntax()]
 ```
-If the syntax is a list, then it means all its child must succeed in order to be succeed.  
+All elements of the list must succeed in order for the operator to succeed.  
 The following table use `Args = ["1", "a"]`,
-| syntax | result | remaining | note |
+| syntax | args | result | note |
 |---|---|---|---|
-| [int, string] | [1, "a"] | [] |-|
-| [int] | [1] | ["a"] |-|
-| [string] | ["1"] | ["a"] |-|
-| [{opt1, binary}] | [{opt1, <<"1">>}] | ["a"] |-|
-| [int, int] | error | ["1", "a"] | "a" isn't an int |
-| [int, string, int] | error | ["1", "a"] | missing third arg |
-| [{opt1, int}, {opt2, int}] | error | ["1", "a"] | "a" isn't an int |
+| [int, string] | ["1", "a"] | [1, "a"] |-|
+| [int] | ["1", "a"]  | [1]| remaining: ["a"] |
+| [string] | ["1", "a"]  | ["1"] | remaining: ["a"] |-|
+| [{key, float}] | ["1.2"] | [{key, 1.2}] |-|
+| [int, int] | ["1", "a"] | error | "a" isn't an int |
+| [int, string, int] | error | missing third arg |
+| [{opt1, int}, {opt2, int}] | ["1", "a"] | error | "a" isn't an int |
 
 #### operator `any`
 format:
@@ -106,19 +146,18 @@ format:
 {any, [syntax()]}
 ```
 The parser will try to consume arguments as long as one of syntax matches.  
-The following table use `Args = ["1", "2", "a", "3", "b"]`
-| syntax | result | remaining | note |
+| syntax | args | result | note |
 |---|---|---|---|
-| {any, [int]} | [1, 2] | ["a", "3", "b"] |-|
-| {any, [{opt, int}]} | [{opt, 1}, {opt, 2}] | ["a", "3", "b"] |-|
-| {any, [int, {b, binary}]} | [1, 2, {b, <<"a">>}, 3, {b, <<"b">>}] | [] |-|
-| {any, [string]} | ["1", "2", "a", "3", "b"] | [] |-|
+| {any, [int]} | ["1", "2", "abc"] | [1, 2] | remaining: ["abc"] |
+| {any, [{key, int}]} | ["1", "2"] | [{key, 1}, {key, 2}] |-|
+| {any, [int, {s, string}]} | ["1", "2", "abc", "3"] | [1, 2, {s, "abc"}, 3] |-|
+| {any, [string]} | ["1", "-o", "abc", "3"] | ["1", "-o", "abc", "3"] | even if "-o" is an option|
 
-No matter the number of matching syntax, `any` will always succeed. If no element matches no arguments will be consumed.
+No matter the number of matching element, `any` will always succeed. If nothing matches no arguments will be consumed.
 
 > [!NOTE]
-> Keep in mind that if the list given to `any` contains types like `string` or `binary`, it will consume all the remaining arguments.
-> **e.g.** with `{any, [string, custom_type]}`, `custom_type` will never match as `string` will always consume argument
+> Keep in mind that if the list given to `any` contains types like `string` or `binary`, it will consume all the remaining arguments.  
+> `{any, [string, custom_type]}`, `custom_type` will never be executed because the type `string` will always consume argument
 
 #### operator `first`
 format:
@@ -194,3 +233,6 @@ my_type(_) ->
 additional features (plan for next version):
 - [ ] `erlarg:usage/1`
 - [ ] `--` (see: https://unix.stackexchange.com/a/11382)
+- [ ] optimize the spec
+- [ ] operator `once`
+- [ ] operator `not`
