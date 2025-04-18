@@ -9,16 +9,28 @@ parse_syntax_directly_test_() ->
 
 parse_basic_types_test_() ->
     [?_assertEqual([123], parse(["123"], int)),
-     ?_assertEqual([123.0], parse(["123"], float)),
      ?_assertEqual([123.4], parse(["123.4"], float)),
+     ?_assertEqual([123.0], parse(["123"], float)),
+     ?_assertEqual([123], parse(["123"], number)),
+     ?_assertEqual([123.4], parse(["123.4"], number)),
      ?_assertEqual(["123"], parse(["123"], string)),
      ?_assertEqual([<<"äbc"/utf8>>], parse(["äbc"], binary)),
+     ?_assertEqual(['äbc'], parse(["äbc"], atom)),
      ?_assertEqual([{key, 123}], parse(["123"], {key, int})),
-     ?_assertEqual([{key, 123.0}], parse(["123"], {key, float})),
+     ?_assertEqual([{key, 123}], parse(["123"], {key, number})),
      ?_assertEqual([{key, 123.4}], parse(["123.4"], {key, float})),
      ?_assertEqual([{key, "123"}], parse(["123"], {key, string})),
-     ?_assertEqual([{key, <<"äbc"/utf8>>}], parse(["äbc"], {key, binary}))
+     ?_assertEqual([{key, <<"äbc"/utf8>>}], parse(["äbc"], {key, binary})),
+     ?_assertEqual([{key, 'äbc'}], parse(["äbc"], {key, atom}))
     ].
+
+parse_boolean_test_() ->
+    False = ["false", "f", "0", "0.0000", "no", "n",
+             "False", "fAlSe", "disabled", ""],
+    True = ["true", "t", "1", "1000", "0.00001", "yes", "y",
+            "True", "tRuE", "enabled", "abcd"],
+    [[?_assertEqual([false], parse([Arg], bool)) || Arg <- False],
+     [?_assertEqual([true], parse([Arg], bool)) || Arg <- True]].
 
 parse_param_test_() ->
     [?_assertEqual([123],
@@ -26,7 +38,7 @@ parse_param_test_() ->
      ?_assertEqual(["123"],
                    parse(["--param", "123"], param({"-p", "--param"}, string))),
      ?_assertEqual([123.0],
-                   parse(["--param=123"], param({"-p", "--param"}, float))),
+                   parse(["--param=123.0"], param({"-p", "--param"}, float))),
      ?_assertEqual([tag],
                    parse(["-p"], {tag, param({"-p", "--param"})})),
      ?_assertEqual([<<"äbc"/utf8>>],
@@ -125,6 +137,25 @@ parse_p_test_() ->
     [?_assertEqual([{a, 1}, {b, [{b, 2}, {bs, "3"}]}],
                    Test(["--a-long=1", "-b", "2", "3"], [a, b]))
     ].
+
+parse_readme_example_test() ->
+    Spec = {any, [{limit, erlarg:param({"-l", "--limit"}, int)},
+                  {format, erlarg:param({"-f", "--format"}, binary)},
+                  {file, erlarg:param("-o", string)},
+                  {stdin, erlarg:param("-")},
+                  {max, erlarg:param({"-m", "--max"}, float)}]},
+    Args = ["--limit=20",
+            "-m", "0.25",
+            "--format", "%s%t",
+            "-o", "output.tsv",
+            "-"],
+    Expected = [{limit, 20},
+                {max, 0.25},
+                {format, <<"%s%t">>},
+                {file, "output.tsv"},
+                stdin],
+    ?assertEqual({ok, Expected}, erlarg:parse(Args, Spec)).
+
 
 param(Key) ->
     erlarg:param(Key, undefined, <<"döc"/utf8>>).

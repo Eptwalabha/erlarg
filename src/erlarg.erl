@@ -1,14 +1,14 @@
 -module(erlarg).
 
 -export([parse/2]).
--export([param/3]).
+-export([param/1, param/2, param/3]).
 
 -record(param, { short, long, syntax, doc }).
 
 -define(REV(List), lists:reverse(List)).
 
 -type args() :: [string()].
--type base_type() :: int | float | string | binary.
+-type base_type() :: int | float | number | bool | string | binary | atom.
 -type type() :: base_type() | atom().
 -type spec() :: map().
 
@@ -20,11 +20,30 @@
               spec/0, args/0
              ]).
 
+
+-spec param(Command) -> Param when
+      Command :: string() | undefined
+                 | {string() | undefined, string() | undefined},
+      Param :: param().
+
+param(Command) ->
+    param(Command, undefined, undefined).
+
+-spec param(Command, Syntax) -> Param when
+      Command :: string() | undefined
+                 | {string() | undefined, string() | undefined},
+      Syntax :: syntax() | undefined,
+      Param :: param().
+
+param(Command, Syntax) ->
+    param(Command, Syntax, undefined).
+
+
 -spec param(Command, Syntax, Doc) -> Param when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
-      Syntax :: syntax(),
-      Doc :: string() | binary(),
+      Syntax :: syntax() | undefined,
+      Doc :: string() | binary() | undefined,
       Param :: param().
 
 param({Short, Long}, Syntax, Doc) ->
@@ -54,11 +73,36 @@ to_float(String) ->
     try list_to_float(String) of
         Float -> {ok, Float}
     catch
-        error:_ ->
-            case to_int(String) of
-                {ok, Int} -> {ok, float(Int)};
+        error:_ -> error
+    end.
+
+
+-spec to_number(String) -> Result when
+      String :: string(),
+      Result :: {ok, integer() | float()} | error.
+
+to_number(String) ->
+    case to_int(String) of
+        {ok, Int} -> {ok, Int};
+        _ ->
+            case to_float(String) of
+                {ok, Float} -> {ok, Float};
                 _ -> error
             end
+    end.
+
+
+to_bool("") -> false;
+to_bool("0") -> false;
+to_bool("disabled") -> false;
+to_bool("f") -> false;
+to_bool("false") -> false;
+to_bool("n") -> false;
+to_bool("no") -> false;
+to_bool(Arg) ->
+    case to_number(Arg) of
+        {ok, Float} when is_float(Float) -> Float =/= 0.0;
+        _ -> true
     end.
 
 parse(Args, #{ syntax := Syntax } = Specs) ->
@@ -101,8 +145,9 @@ parse(Specs, {Name, Syntax}, Args, Acc) ->
         none -> none
     end;
 parse(Specs, BaseType, Args, Acc)
-  when BaseType =:= int; BaseType =:= float;
-       BaseType =:= string; BaseType =:= binary ->
+  when BaseType =:= int; BaseType =:= float; BaseType =:= number;
+       BaseType =:= bool; BaseType =:= string; BaseType =:= binary;
+       BaseType =:= atom ->
     case consume(Specs, BaseType, Args) of
         {ok, Value, Args2} ->
             {[Value | Acc], Args2};
@@ -156,10 +201,20 @@ consume(_, int, [Arg | Args]) ->
         _ -> {error, {badarg, Arg}}
     end;
 consume(_, float, [Arg | Args]) ->
-    case to_float(Arg) of
-        {ok, Float} -> {ok, Float, Args};
+    case to_number(Arg) of
+        {ok, Int} when is_integer(Int) -> {ok, float(Int), Args};
+        {ok, Float} when is_float(Float) -> {ok, Float, Args};
         _ -> {error, {badarg, Arg}}
     end;
+consume(_, number, [Arg | Args]) ->
+    case to_number(Arg) of
+        {ok, Number} -> {ok, Number, Args};
+        _ -> {error, {badarg, Arg}}
+    end;
+consume(_, bool, [String | Args]) ->
+    {ok, to_bool(string:lowercase(String)), Args};
+consume(_, atom, [String | Args]) ->
+    {ok, list_to_atom(String), Args};
 consume(_, binary, [String | Args]) ->
     {ok, unicode:characters_to_binary(String), Args};
 consume(_, string, [String | Args]) ->
