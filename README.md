@@ -10,19 +10,13 @@ Useful for handling options/parameters of escript
 
 ## Installation
 
-Add `erlarg` to in your `rebar.config`:
+Add `erlarg` to in the `deps` of your `rebar.config`:
 ```erlang
-{deps, [
- ...
- {erlarg, {git, "https://github.com/Eptwalabha/erlarg.git", {branch, "master"}}}
- ]}.
+{erlarg, {git, "https://github.com/Eptwalabha/erlarg.git", {branch, "master"}}}
 ```
-If you're building an `escript`, add `erlarg` to the list of app to include in the binary
+If you're building an `escript`, add `erlarg` to the list of apps to include in the binary
 ```erlang
-{escript_incl_apps, [
- ...
- erlarg
- ]}.
+{escript_incl_apps, [erlarg, …]}.
 ```
 fetch and compile the dependencies of your project:
 ```bash
@@ -31,15 +25,15 @@ rebar3 compile --deps_only
 That's it, you're done.
 
 ## Usage
-Let say your escript program takes a list of parameters like so:
+Let say your escript takes a list of parameters like so:
 ```bash
 ./my-script --limit=20 -m 0.25 --format "%s%t" -o output.tsv -
 ```
-The `main/1` function of your script will receive the following list on strings:
+The `main/1` function of your script will receive the following list of arguments:
 ```erlang
 ["--limit=20", "-m", "0.25", "--format", "%s%t", "-o", "output.tsv", "-"]
 ```
-`erlarg:parse/2` can help you convert this `Args` into a structured data:
+`erlarg:parse/2` will help you convert it into a structured data:
 ```erlang
 main(Args) ->
     Spec = {any, [{limit, erlarg:param({"-l", "--limit"}, int)},
@@ -51,7 +45,7 @@ main(Args) ->
     {ok, Options} = erlarg:parse(Args, Spec),
     ...
 ```
-In this exemple, `Options` will be:
+In this exemple, `parse` will returns:
 ```erlang
 [{limit, 20},
  {max, 0.25},
@@ -60,11 +54,14 @@ In this exemple, `Options` will be:
  stdin].
 ```
 
-The `erlarg:parse/2` function takes two parameters:
-- `Args` a list of arguments
-- `Spec` the spec (or syntax) use to parse `Args` into a structured data that your program can use.
+This function takes two parameters:
+- `Args` the list of arguments
+- `Spec` the syntax definition
 
-### Spec / Syntax
+
+Spec can either be:
+- a map containing two keys: `syntax` and `definitions` (optionnal)
+- a `syntax`
 
 The spec is a map of two elements:
 - `syntax`, it's the syntax tree which can be:
@@ -76,19 +73,16 @@ The spec is a map of two elements:
     - another syntax
 - `definitions`: a map of all the parameters and custom type functions used in `syntax`
 
-> [!NOTE]
-> If your syntax is relatively simple, you can pass the syntax directly insted of the Spec.
-
 ### Syntax
 
 #### base types
 The parser will try to "consume" the arguments with the given types:
-- `int`: the parser will try to parse the string (will fail if arg isn't an `int`)
-- `float`: same as int, but with float (will also fail if arg is an int)
-- `number`: the parser will try to convert to int, if it fails, it will try to convert to float
+- `int`: cast the argument into an int
+- `float`: cast the argument into a float (will cast int into float)
+- `number`: cast the argument into an int. If it fails it will cast the argument into a float
 - `string`: returns the given argument
-- `binary`: convert into a the binary
-- `atom`: convert the arg to an atom
+- `binary`: cast the argument into a binary list
+- `atom`: cast the arg to an atom
 - `bool`: return the boolean value of the arg
 
 | syntax | arg | result | note |
@@ -96,11 +90,13 @@ The parser will try to "consume" the arguments with the given types:
 | int | "1" | 1 |-|
 | int | "1.2" | error | not an int |
 | float | "1.2" | 1.2 |-|
-| float | "1" | [1.0] | cast int into float |
+| float | "1" | 1.0 | cast int into float |
+| float | "1.234e2" | 123.4 |-|
+| number | "1" | 1 |-|
+| number | "1.2" | 1.2 |-|
 | string | "abc" | "abc" | does nothing |
-| binary | "äbc" | <<"äbc"/utf8>> |-|
+| binary | "äbc" | <<"äbc"/utf8>> | use `unicode:characters_to_binary`|
 | atom | "super-top" | 'super-top' |-|
-| {is_true, bool} | "0.0" | {is_true, false} | see table bellow |
 
 the `bool` conversion:
 | arg | bool | note |

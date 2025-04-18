@@ -10,6 +10,7 @@ parse_syntax_directly_test_() ->
 parse_basic_types_test_() ->
     [?_assertEqual([123], parse(["123"], int)),
      ?_assertEqual([123.4], parse(["123.4"], float)),
+     ?_assertEqual([123.45], parse(["1.2345e2"], float)),
      ?_assertEqual([123.0], parse(["123"], float)),
      ?_assertEqual([123], parse(["123"], number)),
      ?_assertEqual([123.4], parse(["123.4"], number)),
