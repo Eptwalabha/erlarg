@@ -1,9 +1,9 @@
 -module(erlarg).
 
 -export([parse/2]).
--export([param/1, param/2, param/3]).
+-export([opt/1, opt/2, opt/3]).
 
--record(param, { short, long, syntax, doc }).
+-record(opt, { short, long, syntax, doc }).
 
 -define(REV(List), lists:reverse(List)).
 
@@ -12,46 +12,46 @@
 -type type() :: base_type() | atom().
 -type spec() :: map().
 
--opaque param() :: #param{}.
+-opaque opt() :: #opt{}.
 -opaque syntax() :: [syntax()] | {any | first, [syntax()]}
                   | type() | {any(), type()}.
 
--export_type([param/0, syntax/0,
+-export_type([opt/0, syntax/0,
               spec/0, args/0
              ]).
 
 
--spec param(Command) -> Param when
+-spec opt(Command) -> Param when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
-      Param :: param().
+      Param :: opt().
 
-param(Command) ->
-    param(Command, undefined, undefined).
+opt(Command) ->
+    opt(Command, undefined, undefined).
 
--spec param(Command, Syntax) -> Param when
+-spec opt(Command, Syntax) -> Param when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
       Syntax :: syntax() | undefined,
-      Param :: param().
+      Param :: opt().
 
-param(Command, Syntax) ->
-    param(Command, Syntax, undefined).
+opt(Command, Syntax) ->
+    opt(Command, Syntax, undefined).
 
 
--spec param(Command, Syntax, Doc) -> Param when
+-spec opt(Command, Syntax, Doc) -> Param when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
       Syntax :: syntax() | undefined,
       Doc :: string() | binary() | undefined,
-      Param :: param().
+      Param :: opt().
 
-param({Short, Long}, Syntax, Doc) ->
-    #param{ short = Short, long = Long,
+opt({Short, Long}, Syntax, Doc) ->
+    #opt{ short = Short, long = Long,
             syntax = Syntax,
             doc = Doc };
-param(Short, Syntax, Doc) ->
-    param({Short, undefined}, Syntax, Doc).
+opt(Short, Syntax, Doc) ->
+    opt({Short, undefined}, Syntax, Doc).
 
 
 -spec to_int(String) -> Result when
@@ -145,15 +145,14 @@ parse(_, Syntax, [], Acc) ->
         _ -> error({missing, arg})
     end;
 parse(Specs, {any, Syntax}, Args, Acc) when is_list(Syntax) ->
-    try parse(Specs, {first, Syntax}, Args, Acc) of
+    case parse(Specs, {first, Syntax}, Args, Acc) of
+        {Acc, Args} -> {Acc, Args};
         {Acc2, Args2} -> parse(Specs, {any, Syntax}, Args2, Acc2)
-    catch
-        error:_ -> {Acc, Args}
     end;
 parse(Specs, {any, Syntax}, Args, Acc) ->
     parse(Specs, {any, [Syntax]}, Args, Acc);
-parse(_, {first, []}, _, _) ->
-    error(nomatch);
+parse(_, {first, []}, Args, Acc) ->
+    {Acc, Args};
 parse(Specs, {first, [Item | Syntax]}, Args, Acc) ->
     try parse(Specs, Item, Args, Acc) of
         {Acc2, Args2} -> {Acc2, Args2}
@@ -175,7 +174,7 @@ parse(_, BaseType, [Arg | Args], Acc)
 parse(Specs, ParamName, Args, Acc)
   when is_atom(ParamName) ->
     case maps:find(ParamName, maps:get(definitions, Specs, #{})) of
-        {ok, #param{ syntax = Syntax } = Param} ->
+        {ok, #opt{ syntax = Syntax } = Param} ->
             {Value, Args2} = parse(Specs, Param, Args, []),
             {[commit_value(Syntax, ParamName, Value) | Acc], Args2};
         {ok, Fun} when is_function(Fun, 1) ->
@@ -183,17 +182,17 @@ parse(Specs, ParamName, Args, Acc)
         error ->
             error({unknown_type, ParamName})
     end;
-parse(Specs, #param{ short = Short, long = Long } = Param, [Arg | Args], Acc)
+parse(Specs, #opt{ short = Short, long = Long } = Param, [Arg | Args], Acc)
   when Arg =:= Short; Arg =:= Long ->
-    parse(Specs, Param#param.syntax, Args, Acc);
-parse(Specs, #param{ short = Same, long = Same } = Param, Args, Acc)
+    parse(Specs, Param#opt.syntax, Args, Acc);
+parse(Specs, #opt{ short = Same, long = Same } = Param, Args, Acc)
   when Same =:= undefined ->
-    parse(Specs, Param#param.syntax, Args, Acc);
-parse(Specs, #param{ long = Long } = Param, [Arg | Args], Acc) ->
+    parse(Specs, Param#opt.syntax, Args, Acc);
+parse(Specs, #opt{ long = Long } = Param, [Arg | Args], Acc) ->
     case string:split(Arg, "=") of
         [Long, Value] ->
             parse(Specs, Param, [Long, Value | Args], Acc);
-        _ -> error(badparam)
+        _ -> error({unhandled, Arg})
     end;
 parse(_, Fun, Args, Acc)
   when is_function(Fun, 1) ->
