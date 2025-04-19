@@ -1,11 +1,9 @@
 #!/bin/bash
 
-make lint
-make dialyzer
+make all
 while inotifywait --event modify -r src test --exclude '\..*\.swp';
 do
-    make lint
-    make dialyzer
-    rebar3 do compile, eunit --module=erlarg, cover
+    echo " ======== modified ========"
+    make all
 done
 
