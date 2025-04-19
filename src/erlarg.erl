@@ -56,38 +56,47 @@ param(Short, Syntax, Doc) ->
 
 -spec to_int(String) -> Result when
       String :: string(),
-      Result :: {ok, integer()} | error.
+      Result :: integer().
 
 to_int(String) ->
     try list_to_integer(String) of
-        Int -> {ok, Int}
+        Int -> Int
     catch
-        error:_ -> error
+        error:_ -> error({not_int, String})
     end.
 
 -spec to_float(String) -> Result when
       String :: string(),
-      Result :: {ok, float()} | error.
+      Result :: float().
 
 to_float(String) ->
     try list_to_float(String) of
-        Float -> {ok, Float}
+        Float -> Float
     catch
-        error:_ -> error
+        error:_ ->
+            try list_to_integer(String) of
+                Int -> float(Int)
+            catch
+                error:_ ->
+                    error({not_float, String})
+            end
     end.
 
 
 -spec to_number(String) -> Result when
       String :: string(),
-      Result :: {ok, integer() | float()} | error.
+      Result :: integer() | float().
 
 to_number(String) ->
-    case to_int(String) of
-        {ok, Int} -> {ok, Int};
-        _ ->
-            case to_float(String) of
-                {ok, Float} -> {ok, Float};
-                _ -> error
+    try to_int(String) of
+        Int -> Int
+    catch
+        error:{not_int, _} ->
+            try to_float(String) of
+                Float -> Float
+            catch
+                error:{not_float, _} ->
+                    error({not_number, String})
             end
     end.
 
@@ -100,9 +109,11 @@ to_bool("false") -> false;
 to_bool("n") -> false;
 to_bool("no") -> false;
 to_bool(Arg) ->
-    case to_number(Arg) of
-        {ok, Float} when is_float(Float) -> Float =/= 0.0;
-        _ -> true
+    try to_number(Arg) of
+        Float when is_float(Float) -> Float =/= 0.0;
+        Int when is_integer(Int) -> Int =/= 0
+    catch
+        error:_ -> true
     end.
 
 
@@ -117,9 +128,8 @@ parse(Args, #{ syntax := Syntax } = Specs) ->
         {Acc, RemainingArgs} ->
             {ok, {?REV(Acc), RemainingArgs}}
     catch
-        error:E ->
-            io:fwrite("error: ~p~n", [E]),
-            error
+        error:Error ->
+            {error, Error}
     end;
 parse(Args, Syntax) ->
     parse(Args, #{ syntax => Syntax }).
@@ -132,55 +142,46 @@ parse(_, [], Args, Acc) ->
 parse(_, Syntax, [], Acc) ->
     case Syntax of
         {any, _} -> {Acc, []};
-        _ -> none
+        _ -> error({missing, arg})
+    end;
+parse(Specs, {any, Syntax}, Args, Acc) when is_list(Syntax) ->
+    try parse(Specs, {first, Syntax}, Args, Acc) of
+        {Acc2, Args2} -> parse(Specs, {any, Syntax}, Args2, Acc2)
+    catch
+        error:_ -> {Acc, Args}
     end;
 parse(Specs, {any, Syntax}, Args, Acc) ->
-    case parse(Specs, {first, Syntax}, Args, Acc) of
-        none -> {Acc, Args};
-        {Acc2, Args2} -> parse(Specs, {any, Syntax}, Args2, Acc2)
-    end;
+    parse(Specs, {any, [Syntax]}, Args, Acc);
 parse(_, {first, []}, _, _) ->
-    none;
+    error(nomatch);
 parse(Specs, {first, [Item | Syntax]}, Args, Acc) ->
-    case parse(Specs, Item, Args, Acc) of
-        none -> parse(Specs, {first, Syntax}, Args, Acc);
-        {Acc2, Args2} ->
-            {Acc2, Args2}
+    try parse(Specs, Item, Args, Acc) of
+        {Acc2, Args2} -> {Acc2, Args2}
+    catch
+        error:_ ->
+            parse(Specs, {first, Syntax}, Args, Acc)
     end;
 parse(Specs, [Item | Syntax], Args, Acc) ->
-    case parse(Specs, Item, Args, Acc) of
-        none -> none;
-        {Acc2, Args2} -> parse(Specs, Syntax, Args2, Acc2)
-    end;
+    {Acc2, Args2} = parse(Specs, Item, Args, Acc),
+    parse(Specs, Syntax, Args2, Acc2);
 parse(Specs, {Name, Syntax}, Args, Acc) ->
-    case parse(Specs, Syntax, Args, []) of
-        {Value, Args2} ->
-            {[commit_value(Syntax, Name, Value) | Acc], Args2};
-        none -> none
-    end;
-parse(Specs, BaseType, Args, Acc)
+    {Value, Args2} = parse(Specs, Syntax, Args, []),
+    {[commit_value(Syntax, Name, Value) | Acc], Args2};
+parse(_, BaseType, [Arg | Args], Acc)
   when BaseType =:= int; BaseType =:= float; BaseType =:= number;
        BaseType =:= bool; BaseType =:= string; BaseType =:= binary;
        BaseType =:= atom ->
-    case consume(Specs, BaseType, Args) of
-        {ok, Value, Args2} ->
-            {[Value | Acc], Args2};
-        {error, _} ->
-            none
-    end;
+    {[consume(BaseType, Arg) | Acc], Args};
 parse(Specs, ParamName, Args, Acc)
   when is_atom(ParamName) ->
     case maps:find(ParamName, maps:get(definitions, Specs, #{})) of
         {ok, #param{ syntax = Syntax } = Param} ->
-            case parse(Specs, Param, Args, []) of
-                {Value, Args2} ->
-                    {[commit_value(Syntax, ParamName, Value) | Acc], Args2};
-                none -> none
-            end;
+            {Value, Args2} = parse(Specs, Param, Args, []),
+            {[commit_value(Syntax, ParamName, Value) | Acc], Args2};
         {ok, Fun} when is_function(Fun, 1) ->
             parse(Specs, Fun, Args, Acc);
         error ->
-            none
+            error({unknown_type, ParamName})
     end;
 parse(Specs, #param{ short = Short, long = Long } = Param, [Arg | Args], Acc)
   when Arg =:= Short; Arg =:= Long ->
@@ -192,13 +193,13 @@ parse(Specs, #param{ long = Long } = Param, [Arg | Args], Acc) ->
     case string:split(Arg, "=") of
         [Long, Value] ->
             parse(Specs, Param, [Long, Value | Args], Acc);
-        _ -> none
+        _ -> error(badparam)
     end;
 parse(_, Fun, Args, Acc)
   when is_function(Fun, 1) ->
     case Fun(Args) of
         {ok, Value, Args2} -> {[Value | Acc], Args2};
-        _ -> none
+        Error -> error(Error)
     end.
 
 commit_value(_, Name, [novalue]) -> Name;
@@ -209,27 +210,17 @@ commit_value(_, Name, Values)
   when is_list(Values) ->
     {Name, ?REV(Values)}.
 
-consume(_, int, [Arg | Args]) ->
-    case to_int(Arg) of
-        {ok, Int} -> {ok, Int, Args};
-        _ -> {error, {badarg, Arg}}
-    end;
-consume(_, float, [Arg | Args]) ->
-    case to_number(Arg) of
-        {ok, Int} when is_integer(Int) -> {ok, float(Int), Args};
-        {ok, Float} when is_float(Float) -> {ok, Float, Args};
-        _ -> {error, {badarg, Arg}}
-    end;
-consume(_, number, [Arg | Args]) ->
-    case to_number(Arg) of
-        {ok, Number} -> {ok, Number, Args};
-        _ -> {error, {badarg, Arg}}
-    end;
-consume(_, bool, [String | Args]) ->
-    {ok, to_bool(string:lowercase(String)), Args};
-consume(_, atom, [String | Args]) ->
-    {ok, list_to_atom(String), Args};
-consume(_, binary, [String | Args]) ->
-    {ok, unicode:characters_to_binary(String), Args};
-consume(_, string, [String | Args]) ->
-    {ok, String, Args}.
+consume(int, Arg) ->
+    to_int(Arg);
+consume(float, Arg) ->
+    to_float(Arg);
+consume(number, Arg) ->
+    to_number(Arg);
+consume(bool, String) ->
+    to_bool(string:lowercase(String));
+consume(atom, String) ->
+    list_to_atom(String);
+consume(binary, String) ->
+    unicode:characters_to_binary(String);
+consume(string, String) ->
+    String.

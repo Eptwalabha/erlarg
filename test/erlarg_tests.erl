@@ -2,6 +2,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(ERROR(Args, Specs), parse_with_error(Args, Specs)).
+
 parse_syntax_directly_test_() ->
     [?_assertEqual(["a", "b", "c"], parse(["a", "b", "c"], {any, [string]})),
      ?_assertEqual([1, 2, 3], parse(["1", "2", "3"], {any, [int]}))
@@ -64,7 +66,7 @@ parse_any_test_() ->
                         [string, {a, int}, {b, string}, int])),
      ?_assertEqual([1, 2, "a", "1"],
                    parse(["1", "2", "a", "1"],
-                        [{any, [int]}, {any, [string]}])),
+                         [{any, [int]}, {any, [string]}])),
      ?_assertEqual([1, {a, 2}, {b, [3]}],
                    parse(["1", "2", "3"],
                         [int, {a, int}, {b, [int]}])),
@@ -178,6 +180,19 @@ remaining_args_test_() ->
      ?_assertEqual(["c"], remain(["1", "2.2", "c"], {any, float}))
     ].
 
+
+error_test_() ->
+    [?_assertEqual({missing, arg}, ?ERROR(["-a"], param("-a", int))),
+     ?_assertEqual({not_int, "a"}, ?ERROR(["1", "a"], [int, int])),
+     ?_assertEqual({not_int, "1.2"}, ?ERROR(["a", "1.2"], [string, int])),
+     ?_assertEqual({not_float, "a"}, ?ERROR(["1.2", "a"], [string, float])),
+     ?_assertEqual({not_number, "a"}, ?ERROR(["a"], [number])),
+     ?_assertEqual(nomatch, ?ERROR(["a"], {first, [int, float]})),
+     ?_assertEqual(oops, ?ERROR(["a"], fun (_) -> oops end)),
+     ?_assertEqual({unknown_type, my_type}, ?ERROR(["a"], [my_type]))
+    ].
+
+
 param(Key) ->
     erlarg:param(Key, undefined, <<"döc"/utf8>>).
 
@@ -191,6 +206,10 @@ parse(Args, Spec) ->
 remain(Args, Spec) ->
     {ok, {_, Remaining}} = erlarg:parse(Args, Spec),
     Remaining.
+
+parse_with_error(Args, Spec) ->
+    {error, Error} = erlarg:parse(Args, Spec),
+    Error.
 
 
 spec() ->
