@@ -112,11 +112,8 @@ multi_params_test_() ->
                 b => param("-b", [{item1, string}, {item2, string}])
                }
             },
-    Test = fun (Args) ->
-                   parse(Args, Spec)
-           end,
     [?_assertEqual([{a, ["abc", 1]}, {b, [{item1, "def"}, {item2, "2"}]}],
-                   Test(["-a", "abc", "1", "-b", "def", "2"]))
+                   parse(["-a", "abc", "1", "-b", "def", "2"], Spec))
     ].
 
 
@@ -170,8 +167,16 @@ parse_readme_example_test() ->
                 {format, <<"%s%t">>},
                 {file, "output.tsv"},
                 stdin],
-    ?assertEqual({ok, Expected}, erlarg:parse(Args, Spec)).
+    ?assertEqual({ok, {Expected, []}}, erlarg:parse(Args, Spec)).
 
+
+remaining_args_test_() ->
+    [?_assertEqual(["b", "c"], remain(["a", "b", "c"], string)),
+     ?_assertEqual(["c"], remain(["1", "b", "c"], [int, string])),
+     ?_assertEqual([], remain(["a", "b", "c"], {any, string})),
+     ?_assertEqual(["2.2", "c"], remain(["1", "2.2", "c"], {any, int})),
+     ?_assertEqual(["c"], remain(["1", "2.2", "c"], {any, float}))
+    ].
 
 param(Key) ->
     erlarg:param(Key, undefined, <<"döc"/utf8>>).
@@ -180,8 +185,12 @@ param(Key, Syntax) ->
     erlarg:param(Key, Syntax, <<"döc"/utf8>>).
 
 parse(Args, Spec) ->
-    {ok, Options} = erlarg:parse(Args, Spec),
+    {ok, {Options, []}} = erlarg:parse(Args, Spec),
     Options.
+
+remain(Args, Spec) ->
+    {ok, {_, Remaining}} = erlarg:parse(Args, Spec),
+    Remaining.
 
 
 spec() ->

@@ -105,10 +105,21 @@ to_bool(Arg) ->
         _ -> true
     end.
 
+
+-spec parse(Args, Syntax) -> Options | Error when
+      Args :: args(),
+      Syntax :: map() | syntax(),
+      Options :: {ok, {any(), args()}},
+      Error :: error.
+
 parse(Args, #{ syntax := Syntax } = Specs) ->
-    case parse(Specs, Syntax, Args, []) of
-        none -> none;
-        {Acc, []} -> {ok, ?REV(Acc)}
+    try parse(Specs, Syntax, Args, []) of
+        {Acc, RemainingArgs} ->
+            {ok, {?REV(Acc), RemainingArgs}}
+    catch
+        error:E ->
+            io:fwrite("error: ~p~n", [E]),
+            error
     end;
 parse(Args, Syntax) ->
     parse(Args, #{ syntax => Syntax }).
