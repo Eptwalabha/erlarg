@@ -118,8 +118,11 @@ parse(_, undefined, Args, Acc) ->
     {[novalue | Acc], Args};
 parse(_, [], Args, Acc) ->
     {Acc, Args};
-parse(_, _, [], Acc) ->
-    {Acc, []};
+parse(_, Syntax, [], Acc) ->
+    case Syntax of
+        {any, _} -> {Acc, []};
+        _ -> none
+    end;
 parse(Specs, {any, Syntax}, Args, Acc) ->
     case parse(Specs, {first, Syntax}, Args, Acc) of
         none -> {Acc, Args};

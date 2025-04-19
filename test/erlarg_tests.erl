@@ -11,8 +11,11 @@ parse_basic_types_test_() ->
     [?_assertEqual([123], parse(["123"], int)),
      ?_assertEqual([123.4], parse(["123.4"], float)),
      ?_assertEqual([123.0], parse(["123"], float)),
+     ?_assertEqual([123.4], parse(["1.234e2"], float)),
      ?_assertEqual([123], parse(["123"], number)),
      ?_assertEqual([123.4], parse(["123.4"], number)),
+     ?_assertEqual([123.4], parse(["1.234e2"], number)),
+     ?_assertEqual([-123.4], parse(["-1.234e2"], number)),
      ?_assertEqual(["123"], parse(["123"], string)),
      ?_assertEqual([<<"äbc"/utf8>>], parse(["äbc"], binary)),
      ?_assertEqual(['äbc'], parse(["äbc"], atom)),
@@ -68,6 +71,19 @@ parse_any_test_() ->
      ?_assertEqual([<<"1">>, {a, <<"2">>}, {b, [<<"3">>]}],
                    parse(["1", "2", "3"],
                         [binary, {a, binary}, {b, [binary]}]))
+    ].
+
+
+parse_first_test_() ->
+    [?_assertEqual([1], parse(["1"], {first, [int, string]})),
+     ?_assertEqual(["abc"], parse(["abc"], {first, [int, string]})),
+     ?_assertEqual([{f, 1.1}], parse(["1.1"], {first, [{i, int}, {f, float}]})),
+     ?_assertEqual([{d, [1, "abc"]}],
+                   parse(["1", "abc"],
+                         {first, [{a, [int, int]},
+                                  {b, [float, float]},
+                                  {c, [int, string, int]},
+                                  {d, [number, string]}]}))
     ].
 
 parse_custom_types_test_() ->
@@ -134,8 +150,8 @@ parse_p_test_() ->
     Test = fun (Args, Syntax) ->
                    parse(Args, Spec#{ syntax => Syntax })
            end,
-    [?_assertEqual([{a, 1}, {b, [{b, 2}, {bs, "3"}]}],
-                   Test(["--a-long=1", "-b", "2", "3"], [a, b]))
+    [?_assertEqual([{a, 1}, {b, [{b, 2}, {bs, "3"}, {c, 4}]}],
+                   Test(["--a-long=1", "-b", "2", "3", "4"], [a, b]))
     ].
 
 parse_readme_example_test() ->
