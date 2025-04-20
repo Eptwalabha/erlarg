@@ -36,4 +36,4 @@ jobs:
     - name: Run tests
       run: rebar3 eunit --cover
     - name: Run cover
-      run: rebar3 cover -m 100
+      run: rebar3 cover --verbose -m 100

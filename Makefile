@@ -16,6 +16,6 @@ test:
 	rebar3 eunit
 cover:
 	rebar3 eunit --cover
-	rebar3 cover -m 100
+	rebar3 cover --verbose -m 100
 clean:
 	rebar3 clean
