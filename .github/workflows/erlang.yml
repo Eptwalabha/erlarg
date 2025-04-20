@@ -27,7 +27,7 @@ jobs:
       env:
         cache-name: dialyzer-plt-cache
       with:
-        path: _build/
+        path: _build/
         key: ${{ runner.os }}-rebar-build-${{ env.cache-name }}-${{ hashFiles('rebar.lock') }}
     - name: Run dialyzer
       run: rebar3 dialyzer
