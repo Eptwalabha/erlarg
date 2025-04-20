@@ -22,6 +22,13 @@ jobs:
     - uses: actions/checkout@v3
     - name: Compile
       run: rebar3 compile
+    - name: cache dialyzer plt
+      uses: actions/cache@v4
+      env:
+        cache-name: dialyzer-plt-cache
+      with:
+        path: _build/
+        key: ${{ runner.os }}-rebar-build-${{ env.cache-name }}-${{ hashFiles('rebar.lock') }}
     - name: Run dialyzer
       run: rebar3 dialyzer
 #    - name: Run linter
