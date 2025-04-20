@@ -1,7 +1,7 @@
 #!/usr/bin/make
 
 .PHONY : all deps compile dialyzer lint test cover clean
-all: deps compile dialyzer lint cover
+all: deps compile dialyzer linter cover
 deps:
 	rebar3 get-deps
 compile:
@@ -10,6 +10,8 @@ dialyzer:
 	rebar3 dialyzer
 lint:
 	elvis rock --config elvis.config
+linter:
+	rebar3 lint
 test:
 	rebar3 eunit
 cover:
