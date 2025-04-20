@@ -54,69 +54,6 @@ opt(Short, Syntax, Doc) ->
     opt({Short, undefined}, Syntax, Doc).
 
 
--spec to_int(String) -> Result when
-      String :: string(),
-      Result :: integer().
-
-to_int(String) ->
-    try list_to_integer(String) of
-        Int -> Int
-    catch
-        error:_ -> error({not_int, String})
-    end.
-
--spec to_float(String) -> Result when
-      String :: string(),
-      Result :: float().
-
-to_float(String) ->
-    try list_to_float(String) of
-        Float -> Float
-    catch
-        error:_ ->
-            try list_to_integer(String) of
-                Int -> float(Int)
-            catch
-                error:_ ->
-                    error({not_float, String})
-            end
-    end.
-
-
--spec to_number(String) -> Result when
-      String :: string(),
-      Result :: integer() | float().
-
-to_number(String) ->
-    try to_int(String) of
-        Int -> Int
-    catch
-        error:{not_int, _} ->
-            try to_float(String) of
-                Float -> Float
-            catch
-                error:{not_float, _} ->
-                    error({not_number, String})
-            end
-    end.
-
-
-to_bool("") -> false;
-to_bool("0") -> false;
-to_bool("disabled") -> false;
-to_bool("f") -> false;
-to_bool("false") -> false;
-to_bool("n") -> false;
-to_bool("no") -> false;
-to_bool(Arg) ->
-    try to_number(Arg) of
-        Float when is_float(Float) -> Float =/= 0.0;
-        Int when is_integer(Int) -> Int =/= 0
-    catch
-        error:_ -> true
-    end.
-
-
 -spec parse(Args, Syntax) -> Options | Error when
       Args :: args(),
       Syntax :: map() | syntax(),
@@ -223,3 +160,67 @@ consume(binary, String) ->
     unicode:characters_to_binary(String);
 consume(string, String) ->
     String.
+
+-spec to_int(String) -> Result when
+      String :: string(),
+      Result :: integer().
+
+to_int(String) ->
+    try list_to_integer(String) of
+        Int -> Int
+    catch
+        error:_ -> error({not_int, String})
+    end.
+
+-spec to_float(String) -> Result when
+      String :: string(),
+      Result :: float().
+
+to_float(String) ->
+    try to_number(String) of
+        Int when is_integer(Int) -> float(Int);
+        Float when is_float(Float) -> Float
+    catch
+        error:_ -> error({not_float, String})
+    end.
+
+
+-spec to_number(String) -> Result when
+      String :: string(),
+      Result :: integer() | float().
+
+to_number(String) ->
+    to_number(String, [int, float]).
+
+to_number(String, []) ->
+    error({not_number, String});
+to_number(String, [int | Tail]) ->
+    try list_to_integer(String) of
+        Int -> Int
+    catch
+        error:_ -> to_number(String, Tail)
+    end;
+to_number(String, [float | Tail]) ->
+    try list_to_float(String) of
+        Float -> Float
+    catch
+        error:_ -> to_number(String, Tail)
+    end.
+
+
+-spec to_bool(Argument :: string()) -> Result :: boolean().
+
+to_bool("") -> false;
+to_bool("0") -> false;
+to_bool("disabled") -> false;
+to_bool("f") -> false;
+to_bool("false") -> false;
+to_bool("n") -> false;
+to_bool("no") -> false;
+to_bool(Arg) ->
+    try to_number(Arg) of
+        Float when is_float(Float) -> Float =/= 0.0;
+        Int when is_integer(Int) -> Int =/= 0
+    catch
+        error:_ -> true
+    end.
