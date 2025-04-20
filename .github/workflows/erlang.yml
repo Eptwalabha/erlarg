@@ -31,5 +31,9 @@ jobs:
         key: ${{ runner.os }}-rebar-build-${{ env.cache-name }}-${{ hashFiles('rebar.lock') }}
     - name: Run dialyzer
       run: rebar3 dialyzer
-    - name: Run tests, linter and cover
-      run: rebar3 do lint, eunit --cover, cover -m 100
+    - name: Run linter
+      run: rebar3 lint
+    - name: Run tests
+      run: rebar3 eunit --cover
+    - name: Run cover
+      run: rebar3 cover -m 100

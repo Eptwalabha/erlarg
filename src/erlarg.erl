@@ -13,8 +13,7 @@
 -type spec() :: map().
 
 -opaque opt() :: #opt{}.
--opaque syntax() :: [syntax()] | {any | first, [syntax()]}
-                  | type() | {any(), type()}.
+-opaque syntax() :: [syntax()] | {any | first, [syntax()]} | type() | {any(), type()}.
 
 -export_type([opt/0, syntax/0,
               spec/0, args/0
