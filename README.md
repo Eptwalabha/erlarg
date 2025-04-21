@@ -109,10 +109,10 @@ this time, calling `erlarg:parse/2` with the same syntax as before will give thi
 Syntax = [string, int].
 {ok, {_, ["some", "extra", "arguments"]}} = erlarg:parse(Args, Syntax).
 ```
-Because the syntax is only expecting two arguments, all the others where added to the `RemainingArgs`.
+The parser will consume the two first arguments, the remaining argument will be returned in the `RemainingArgs`.
 
 > [!NOTE]
-> Having unconsumed argument does not generate an error
+> Having unconsumed arguments does not generate an error
 
 ### All base types
 The parser can convert the argument to more types than just `string` and `int`.  
@@ -135,7 +135,7 @@ Here are all the types currently available :
 | float | "1.234e2" | 123.4 |-|
 | number | "1" | 1 |-|
 | number | "1.2" | 1.2 |-|
-| string | "abc" | "abc" | does nothing |
+| string | "abc" | "abc" |-|
 | binary | "äbc" | <<"äbc"/utf8>> | use `unicode:characters_to_binary`|
 | atom | "super-top" | 'super-top' |-|
 
@@ -156,31 +156,61 @@ the `bool` conversion:
 > [!TIP]
 > converting an argument into `string`, `binary`, `bool` or `atom` it will always succeed.
 
-### Give names to our parameters
 
-Parsing the type of argument is nice, but it does not really help us understand what this parameters are for.  
-If we take our last example:
-```bash
-$ print_n_time "hello" 3
-```
-The first version of our syntax will return:
+### Naming the parsed values
+
+Converting an argument into a specific type is important, but does not really help us understand what these values are for:  
 ```erlang
-["hello", 3].
+> Syntax = [string, int].
+> {ok, {Result, _}} = erlarg:parse(["hello", "3"], Syntax).
+["hello", 3]. % Result
 ```
-That's nice, but not really helpful… It'll be nice to "name" the parsed parameters. This can be archieved with the following syntax:
+The parser allows you to "name" value with the following syntax:
 ```erlang
 {Name :: atom(), Type :: base_type()}
 ```
-Now, if we update our syntax:
-```
-Syntax = [{words, string()}, {nbr, int}].
-```
-The parser will return this:
-``` erlang
-[{words, "hello"}, {nbr, 3}]
+If we rewrite the syntax as such:
+```erlang
+> Syntax = [{sentence_to_print, string()}, {nbr_of_copy, int}].
+> {ok, {Result, _}} = erlarg:parse(["hello", "3"], Syntax).
+[{sentence_to_print, "hello"}, {nbr_of_copy, 3}]. % Result
 ```
 
 ### Options
+Most program use options:
+```bash
+$ tar --list --file FILE
+```
+`erlarg` can handle two kind of options:
+- without parameter
+- with parameters
+- with sub options
+
+An option can be defined with `erlarg:opt` as such:
+```erlang
+> FileOpt = erlarg:opt({"-f", "--file"}, file, string),
+```
+This will parse options that are written these ways:
+```
+-f my-file.tsv
+--file my-file.tsv
+--file=my-file.tsv
+```
+> [!NOTE]
+> The parser does not currently handle combined short options (i.e: `tar -xzf`).  
+> This feature is expected for future version.
+
+The first parameter of `erlarg:opt` is the option used:
+| | short | long | note |
+|---|---|---|---|
+| {"-f", "--file"} | "-f" | "--file" | |
+| "-f" | "-f" | undefined | no long option |
+| { undefined, "--file" } | undefined | "--file" | no short option |
+
+The second parameter is its name in `atom()`
+The third (and optional) parameter is the syntax expected by this option. It can be anything, a type (basic or custom), a list of options, a complex syntax or even `undefined`.
+
+
 
 
 ### operator `and`
@@ -235,18 +265,18 @@ The following table use `Args = ["a", "b", "1"]`
 
 ### custom type
 
-This lib allows you to define your own type. It's especially usefull when you need to perfom some operation on the argument or if you need to do more complexe verification.  
-
-Your custom type is a function that takes a list of argument and return the formated / checked value to the parser:
+Sometime, you need to perfom some operations on an argument or do more complexe verifications. This is what custom type is for.  
+A custom type is a function that takes a list of arguments and return the formated / checked value to the parser:
 ```
 -spec fun((Args :: args()) -> {ok, Value :: any(), Remaining :: args} | Failure :: any()).
 ```
 - `Args`: The list of arguments not yet consumed by the parser
 - `Value`: The Value you want to return to the parser
 - `Remaining`: The list of arguments your function didn't consumed
+- `Failure`: some explanation on why the function didn't accept the argument
 
 **Example 1**:  
-Let say your script has an option `-f FILE` where `FILE` must be an existing file. In this case the type `string` is not enought, so you could make your own function that does this check:
+Let say your script has an option `-f FILE` where `FILE` must be an existing file. In this case the type `string` won't be enought. You could write your own function to perform this check:
 ```erlang
 existing_file([File | RemainingArgs]) ->
     case filelib:is_regular(File) of
@@ -259,16 +289,16 @@ existing_file([File | RemainingArgs]) ->
 To use your custom type:
 ```erlang
 Spec = #{ syntax => {any, [file]},
-          definitions => #{ file => erlarg:opt("-f", existing_file),
+          definitions => #{ file => erlarg:opt({"-f", "--file"}, existing_file),
                             existing_file => fun existing_file/1 } }.
 ```
-or more simply:
+or simply:
 ```erlang
-{any, [{file, erlarg:opt("-f", fun existing_file/1)}]}
+Spec = {any, [{file, erlarg:opt({"-f", "--file"}, fun existing_file/1)}]}.
 ```
 
 **Example 2**:  
-In this case, your script needs to fetch the informations of a particular user from a config file with the option `--consult USERS_FILE USER_ID` where `CONFIG` is the location of the database file and `USER_ID` is the id of the user:
+In this case, your script needs to fetch the informations of a particular user from a config file with the option `--consult USERS_FILE USER_ID` where `USERS_FILE` is the file containing the users data and `USER_ID` is the id of the user:
 ```erlang
 get_user_config([DatabaseFile, UserID | RemainingArgs]) ->
     case file:consult(DatabaseFile) of
@@ -282,34 +312,3 @@ get_user_config([DatabaseFile, UserID | RemainingArgs]) ->
 get_user_config(_) ->
     {badarg, missing_arguments}.
 ```
-
-**Examples 3**:  
-The results of the following table use the type `my_type` defined by the following function:
-```
-my_type(["c:" ++ Arg | Args]) ->
-    {ok, {cust, Arg}, Args};
-my_type(_) ->
-    fails.
-```
-| syntax | args | result | remaining | note |
-|---|---|---|---|---|
-| [my_type] | ["c:abc"] | [{cust, "abc"}] | [] |-|
-| {any, [my_type, int]} | ["1", "c:abc", "other"] | [1, {cust, "abc"}] | ["other"] |-|
-| [my_type, my_type] | ["c:abc", "other] | error | ["c:abc", "other] | the second arg does not match type `my_type` |
-| [{opt1, binary}] | [{opt1, <<"1">>}] | ["a"] |-|
-| [int, int] | error | ["1", "a"] | "a" isn't an int |
-| [int, string, int] | error | ["1", "a"] | missing third arg |
-| [{opt1, int}, {opt2, int}] | error | ["1", "a"] | "a" isn't an int |
-
-## TODO
-
-> [!NOTE]
-> This lib will enter v1.0.0 once the remaining points bellow are dealt with
-
-- [ ] prevent infinite / cyclic recursion
-
-additional features (plan for next version):
-- [ ] `erlarg:usage/1`
-- [ ] `--` (see: https://unix.stackexchange.com/a/11382)
-- [ ] optimize the spec
-- [ ] operator `once`
