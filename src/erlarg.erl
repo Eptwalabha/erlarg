@@ -1,9 +1,9 @@
 -module(erlarg).
 
 -export([parse/2]).
--export([opt/1, opt/2, opt/3]).
+-export([opt/2, opt/3]).
 
--record(opt, { short, long, syntax, doc }).
+-record(opt, { name, short, long, syntax, doc }).
 
 -define(REV(List), lists:reverse(List)).
 
@@ -21,37 +21,28 @@
              ]).
 
 
--spec opt(Command) -> Param when
+-spec opt(Command, Name) -> Param when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
+      Name :: atom(),
       Param :: opt().
 
-opt(Command) ->
-    opt(Command, undefined, undefined).
+opt(Command, Name) ->
+    opt(Command, Name, undefined).
 
--spec opt(Command, Syntax) -> Param when
+-spec opt(Command, Name, Syntax) -> Param when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
+      Name :: atom(),
       Syntax :: syntax() | undefined,
       Param :: opt().
 
-opt(Command, Syntax) ->
-    opt(Command, Syntax, undefined).
-
-
--spec opt(Command, Syntax, Doc) -> Param when
-      Command :: string() | undefined
-                 | {string() | undefined, string() | undefined},
-      Syntax :: syntax() | undefined,
-      Doc :: string() | binary() | undefined,
-      Param :: opt().
-
-opt({Short, Long}, Syntax, Doc) ->
-    #opt{ short = Short, long = Long,
-            syntax = Syntax,
-            doc = Doc };
-opt(Short, Syntax, Doc) ->
-    opt({Short, undefined}, Syntax, Doc).
+opt({Short, Long}, Name, Syntax) ->
+    #opt{ name = Name,
+          short = Short, long = Long,
+          syntax = Syntax };
+opt(Short, Name, Syntax) ->
+    opt({Short, undefined}, Name, Syntax).
 
 
 -spec parse(Args, Syntax) -> Options | Error when
@@ -72,8 +63,8 @@ parse(Args, Syntax) ->
     parse(Args, #{ syntax => Syntax }).
 
 
-parse(_, undefined, Args, Acc) ->
-    {[novalue | Acc], Args};
+parse(_, undefined, _, _) ->
+    error({bad_syntax, undefined});
 parse(_, [], Args, Acc) ->
     {Acc, Args};
 parse(_, Syntax, [], Acc) ->
@@ -112,23 +103,23 @@ parse(Specs, ParamName, Args, Acc)
   when is_atom(ParamName) ->
     case maps:find(ParamName, maps:get(definitions, Specs, #{})) of
         {ok, #opt{ syntax = Syntax } = Param} ->
-            {Value, Args2} = parse(Specs, Param, Args, []),
-            {[commit_value(Syntax, ParamName, Value) | Acc], Args2};
+            parse(Specs, Param, Args, Acc);
+            %{[commit_value(Syntax, ParamName, Value) | Acc], Args2};
         {ok, Fun} when is_function(Fun, 1) ->
             parse(Specs, Fun, Args, Acc);
         error ->
             error({unknown_type, ParamName})
     end;
-parse(Specs, #opt{ short = Short, long = Long } = Param, [Arg | Args], Acc)
-  when Arg =:= Short; Arg =:= Long ->
-    parse(Specs, Param#opt.syntax, Args, Acc);
-parse(Specs, #opt{ short = Same, long = Same } = Param, Args, Acc)
-  when Same =:= undefined ->
-    parse(Specs, Param#opt.syntax, Args, Acc);
-parse(Specs, #opt{ long = Long } = Param, [Arg | Args], Acc) ->
-    case string:split(Arg, "=") of
-        [Long, Value] ->
-            parse(Specs, Param, [Long, Value | Args], Acc);
+parse(Specs, #opt{ syntax = undefined } = Param, [Arg | _] = Args, Acc) ->
+    case is_matching_opt(Param, Args) of
+        {true, Args2} -> {[Param#opt.name | Acc], Args2};
+        _ -> error({unhandled, Arg})
+    end;
+parse(Specs, #opt{ syntax = Syntax } = Opt, [Arg | _] = Args, Acc) ->
+    case is_matching_opt(Opt, Args) of
+        {true, Args2} ->
+            {Acc2, Args3} = parse(Specs, Syntax, Args2, []),
+            {[commit_value(Syntax, Opt#opt.name, Acc2) | Acc], Args3};
         _ -> error({unhandled, Arg})
     end;
 parse(_, Fun, Args, Acc)
@@ -138,7 +129,19 @@ parse(_, Fun, Args, Acc)
         Error -> error(Error)
     end.
 
-commit_value(_, Name, [novalue]) -> Name;
+
+is_matching_opt(#opt{ short = Short, long = Long }, [Arg | Args])
+  when Arg =:= Short; Arg =:= Long ->
+    {true, Args};
+is_matching_opt(#opt{ short = undefined, long = undefined }, Args) ->
+    {true, Args};
+is_matching_opt(#opt{ long = Long } = Opt, [Arg | Args]) ->
+    case string:split(Arg, "=") of
+        [Long, Value] ->
+            {true, [Value | Args]};
+        _ -> false
+    end.
+
 commit_value(Syntax, Name, [Value])
   when not is_list(Syntax) ->
     {Name, Value};
