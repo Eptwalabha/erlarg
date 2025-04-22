@@ -48,18 +48,18 @@ parse_named_type_test_() ->
     ].
 
 parse_opt_test_() ->
-    [?_assertEqual([{param, 123}],
-                   ?RESULT(["-p", "123"], opt("-p", param, int))),
-     ?_assertEqual([{param, "123"}],
-                   ?RESULT(["--param", "123"],
-                           opt({"-p", "--param"}, param, string))),
-     ?_assertEqual([{param, 123.0}],
-                   ?RESULT(["--param=123.0"],
-                           opt({"-p", "--param"}, param, float))),
-     ?_assertEqual([param],
-                   ?RESULT(["-p"], opt({"-p", "--param"}, param))),
-     ?_assertEqual([{param, <<"äbc"/utf8>>}],
-                   ?RESULT(["äbc"], opt(undefined, param, binary)))
+    [?_assertEqual([{option, 123}],
+                   ?RESULT(["-o", "123"], opt("-o", option, int))),
+     ?_assertEqual([{option, "123"}],
+                   ?RESULT(["--option", "123"],
+                           opt({"-o", "--option"}, option, string))),
+     ?_assertEqual([{option, 123.0}],
+                   ?RESULT(["--option=123.0"],
+                           opt({"-o", "--option"}, option, float))),
+     ?_assertEqual([option],
+                   ?RESULT(["-o"], opt({"-o", "--option"}, option))),
+     ?_assertEqual([{option, <<"äbc"/utf8>>}],
+                   ?RESULT(["äbc"], opt(undefined, option, binary)))
     ].
 
 parse_any_test_() ->
@@ -198,7 +198,7 @@ error_test_() ->
      ?_assertEqual({not_float, "a"}, ?ERROR(["1.2", "a"], [string, float])),
      ?_assertEqual({not_number, "a"}, ?ERROR(["a"], [number])),
      ?_assertEqual(oops, ?ERROR(["a"], fun (_) -> oops end)),
-     ?_assertEqual({unknown_type, my_type}, ?ERROR(["a"], [my_type])),
+     ?_assertEqual({unknown, my_type}, ?ERROR(["a"], [my_type])),
      ?_assertEqual({unhandled, "--fail"},
                    ?ERROR(["--fail"], [opt("-a")])),
      ?_assertEqual({unhandled, "--fail=2"},

@@ -21,21 +21,21 @@
              ]).
 
 
--spec opt(Command, Name) -> Param when
+-spec opt(Command, Name) -> Option when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
       Name :: atom(),
-      Param :: opt().
+      Option :: opt().
 
 opt(Command, Name) ->
     opt(Command, Name, undefined).
 
--spec opt(Command, Name, Syntax) -> Param when
+-spec opt(Command, Name, Syntax) -> Option when
       Command :: string() | undefined
                  | {string() | undefined, string() | undefined},
       Name :: atom(),
       Syntax :: syntax() | undefined,
-      Param :: opt().
+      Option :: opt().
 
 opt({Short, Long}, Name, Syntax) ->
     #opt{ name = Name,
@@ -99,20 +99,19 @@ parse(_, BaseType, [Arg | Args], Acc)
        BaseType =:= bool; BaseType =:= string; BaseType =:= binary;
        BaseType =:= atom ->
     {[consume(BaseType, Arg) | Acc], Args};
-parse(Specs, ParamName, Args, Acc)
-  when is_atom(ParamName) ->
-    case maps:find(ParamName, maps:get(definitions, Specs, #{})) of
-        {ok, #opt{ syntax = Syntax } = Param} ->
-            parse(Specs, Param, Args, Acc);
-            %{[commit_value(Syntax, ParamName, Value) | Acc], Args2};
+parse(Specs, OptionName, Args, Acc)
+  when is_atom(OptionName) ->
+    case maps:find(OptionName, maps:get(definitions, Specs, #{})) of
+        {ok, #opt{} = Option} ->
+            parse(Specs, Option, Args, Acc);
         {ok, Fun} when is_function(Fun, 1) ->
             parse(Specs, Fun, Args, Acc);
         error ->
-            error({unknown_type, ParamName})
+            error({unknown, OptionName})
     end;
-parse(Specs, #opt{ syntax = undefined } = Param, [Arg | _] = Args, Acc) ->
-    case is_matching_opt(Param, Args) of
-        {true, Args2} -> {[Param#opt.name | Acc], Args2};
+parse(_, #opt{ syntax = undefined } = Option, [Arg | _] = Args, Acc) ->
+    case is_matching_opt(Option, Args) of
+        {true, Args2} -> {[Option#opt.name | Acc], Args2};
         _ -> error({unhandled, Arg})
     end;
 parse(Specs, #opt{ syntax = Syntax } = Opt, [Arg | _] = Args, Acc) ->
@@ -135,7 +134,7 @@ is_matching_opt(#opt{ short = Short, long = Long }, [Arg | Args])
     {true, Args};
 is_matching_opt(#opt{ short = undefined, long = undefined }, Args) ->
     {true, Args};
-is_matching_opt(#opt{ long = Long } = Opt, [Arg | Args]) ->
+is_matching_opt(#opt{ long = Long }, [Arg | Args]) ->
     case string:split(Arg, "=") of
         [Long, Value] ->
             {true, [Value | Args]};
