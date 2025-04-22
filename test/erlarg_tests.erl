@@ -39,17 +39,27 @@ parse_boolean_test_() ->
     [[?_assertEqual([false], ?RESULT([Arg], bool)) || Arg <- False],
      [?_assertEqual([true], ?RESULT([Arg], bool)) || Arg <- True]].
 
+parse_named_type_test_() ->
+    [?_assertEqual([{tag, "abc"}], ?RESULT(["abc"], {tag, string})),
+     ?_assertEqual([], ?REMAIN(["abc"], {tag, string})),
+
+     ?_assertEqual([{tag, 123}], ?RESULT(["123"], {tag, int})),
+     ?_assertEqual([], ?REMAIN(["abc"], {tag, string}))
+    ].
+
 parse_opt_test_() ->
-    [?_assertEqual([123],
-                   ?RESULT(["-p", "123"], opt("-p", int))),
-     ?_assertEqual(["123"],
-                   ?RESULT(["--param", "123"], opt({"-p", "--param"}, string))),
-     ?_assertEqual([123.0],
-                   ?RESULT(["--param=123.0"], opt({"-p", "--param"}, float))),
-     ?_assertEqual([tag],
-                   ?RESULT(["-p"], {tag, opt({"-p", "--param"})})),
-     ?_assertEqual([<<"äbc"/utf8>>],
-                   ?RESULT(["äbc"], opt(undefined, binary)))
+    [?_assertEqual([{option, 123}],
+                   ?RESULT(["-o", "123"], opt("-o", option, int))),
+     ?_assertEqual([{option, "123"}],
+                   ?RESULT(["--option", "123"],
+                           opt({"-o", "--option"}, option, string))),
+     ?_assertEqual([{option, 123.0}],
+                   ?RESULT(["--option=123.0"],
+                           opt({"-o", "--option"}, option, float))),
+     ?_assertEqual([option],
+                   ?RESULT(["-o"], opt({"-o", "--option"}, option))),
+     ?_assertEqual([{option, <<"äbc"/utf8>>}],
+                   ?RESULT(["äbc"], opt(undefined, option, binary)))
     ].
 
 parse_any_test_() ->
@@ -114,8 +124,8 @@ parse_custom_types_test_() ->
 multi_params_test_() ->
     Spec = #{ syntax => [a, b],
               definitions => #{
-                a => opt("-a", [string, int]),
-                b => opt("-b", [{item1, string}, {item2, string}])
+                a => opt("-a", a, [string, int]),
+                b => opt("-b", b, [{item1, string}, {item2, string}])
                }
             },
     [?_assertEqual([{a, ["abc", 1]}, {b, [{item1, "def"}, {item2, "2"}]}],
@@ -141,10 +151,9 @@ parse_big_test_() ->
 
 parse_option_test_() ->
     Spec = #{ definitions => #{
-                a => opt({"-a", "--a-long"}, {first, [int, string]}),
-                b => opt("-b", [{any, [a, [{b, int}, {bs, string}]]},
-                                  c]),
-                c => opt(undefined, int)
+                a => opt({"-a", "--a-long"}, a, {first, [int, string]}),
+                b => opt("-b", b, [{any, [a, [{b, int}, {bs, string}]]}, c]),
+                c => opt(undefined, c, int)
                }
             },
     Test = fun (Args, Syntax) ->
@@ -155,11 +164,11 @@ parse_option_test_() ->
     ].
 
 parse_readme_example_test() ->
-    Spec = {any, [{limit, opt({"-l", "--limit"}, int)},
-                  {format, opt({"-f", "--format"}, binary)},
-                  {file, opt("-o", string)},
-                  {stdin, opt("-")},
-                  {max, opt({"-m", "--max"}, float)}]},
+    Spec = {any, [opt({"-l", "--limit"}, limit, int),
+                  opt({"-f", "--format"}, format, binary),
+                  opt("-o", file, string),
+                  opt("-", stdin),
+                  opt({"-m", "--max"}, max, float)]},
     Args = ["--limit=20",
             "-m", "0.25",
             "--format", "%s%t",
@@ -183,25 +192,29 @@ remaining_args_test_() ->
 
 
 error_test_() ->
-    [?_assertEqual({missing, arg}, ?ERROR(["-a"], opt("-a", int))),
+    [?_assertEqual({missing, arg}, ?ERROR(["-a"], opt("-a", a, int))),
      ?_assertEqual({not_int, "a"}, ?ERROR(["1", "a"], [int, int])),
      ?_assertEqual({not_int, "1.2"}, ?ERROR(["a", "1.2"], [string, int])),
      ?_assertEqual({not_float, "a"}, ?ERROR(["1.2", "a"], [string, float])),
      ?_assertEqual({not_number, "a"}, ?ERROR(["a"], [number])),
      ?_assertEqual(oops, ?ERROR(["a"], fun (_) -> oops end)),
-     ?_assertEqual({unknown_type, my_type}, ?ERROR(["a"], [my_type])),
+     ?_assertEqual({unknown, my_type}, ?ERROR(["a"], [my_type])),
      ?_assertEqual({unhandled, "--fail"},
                    ?ERROR(["--fail"], [opt("-a")])),
      ?_assertEqual({unhandled, "--fail=2"},
-                   ?ERROR(["--fail=2"], [opt("-a")]))
+                   ?ERROR(["--fail=2"], [opt("-a")])),
+     ?_assertEqual({bad_syntax, undefined}, ?ERROR(["abc"], {tag, undefined}))
     ].
 
 
 opt(Key) ->
-    erlarg:opt(Key).
+    erlarg:opt(Key, opt_name).
 
-opt(Key, Syntax) ->
-    erlarg:opt(Key, Syntax).
+opt(Key, Name) ->
+    erlarg:opt(Key, Name).
+
+opt(Key, Name, Syntax) ->
+    erlarg:opt(Key, Name, Syntax).
 
 parse(Args, Spec, Type) ->
     case erlarg:parse(Args, Spec) of
@@ -221,17 +234,19 @@ spec(Syntax) ->
        syntax => Syntax,
 
        definitions => #{
-         limit => opt({"-l", "--long"}, int),
-         filter => opt({"-g", "--grep"},
+         limit => opt({"-l", "--long"}, limit, int),
+         filter => opt({"-g", "--grep"}, filter,
                          [{any, [invert, columns]}, {search, string}]),
-         invert => opt({"-v", "--invert-match"}),
-         help => opt({"-h", "--help"}),
-         version => opt({"-v", "--version"}),
-         columns => opt({"-c", "--columns"}, type_columns),
-         delimiter_in => opt({"-d", "--delimiter"}, type_delimiter),
-         delimiter_out => opt({undefined, "--out-delimiter"}, type_delimiter),
-         stdin => opt({"-", "--stdin"}),
-         source => opt(undefined, [{any, [stdin, {path, string}]}]),
+         invert => opt({"-v", "--invert-match"}, invert),
+         help => opt({"-h", "--help"}, help),
+         version => opt({"-v", "--version"}, version),
+         columns => opt({"-c", "--columns"}, columns, type_columns),
+         delimiter_in => opt({"-d", "--delimiter"},
+                             delimiter_in, type_delimiter),
+         delimiter_out => opt({undefined, "--out-delimiter"},
+                              delimiter_out, type_delimiter),
+         stdin => opt({"-", "--stdin"}, stdin),
+         source => opt(undefined, source, [{any, [stdin, {path, string}]}]),
 
          type_delimiter => fun (["TAB" | Args]) -> {ok, $\t, Args};
                                ([[Char] | Args]) -> {ok, Char, Args};

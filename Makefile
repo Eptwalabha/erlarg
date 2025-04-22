@@ -5,7 +5,7 @@ all: deps compile dialyzer linter cover
 deps:
 	rebar3 get-deps
 compile:
-	rebar3 compile
+	rebar3 do clean, compile
 dialyzer:
 	rebar3 dialyzer
 lint:
