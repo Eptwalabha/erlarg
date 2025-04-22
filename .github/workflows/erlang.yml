@@ -28,6 +28,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: ${{ matrix.otp }}
+          rebar3-version: "3.18.0"
           version-type: strict
 
       - name: Install elvis
