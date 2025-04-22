@@ -12,28 +12,52 @@ permissions:
 jobs:
 
   build:
+    name: CI with OTP-${{ matrix.erlang.otp }}
+    strategy:
+      fail-fast: false
+      matrix:
+        erlang:
+          - otp: "27"
+            rebar3: "3.22.1"
+          - otp: "26"
+            rebar3: "3.22.1"
+          - otp: "25"
+            rebar3: "3.22.1"
+          - otp: "24"
+            rebar3: "3.16.1"
 
-    runs-on: ubuntu-latest
-
-    container:
-      image: erlang:25
+    runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Compile
-      run: rebar3 compile
-    - name: Cache dialyzer
-      uses: actions/cache@v4
-      env:
-        cache-name: dialyzer-plt-cache
-      with:
-        path: _build/
-        key: ${{ runner.os }}-rebar-build-${{ env.cache-name }}-${{ hashFiles('rebar.lock') }}
-    - name: Run dialyzer
-      run: rebar3 dialyzer
-    - name: Run linter
-      run: rebar3 lint
-    - name: Run tests
-      run: rebar3 eunit --cover
-    - name: Run cover
-      run: rebar3 cover --verbose -m 100
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install OTP-${{ matrix.erlang.otp }}
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.erlang.otp }}
+          rebar3-version: ${{ matrix.erlang.rebar3 }}
+          version-type: strict
+
+      - name: Install elvis
+        run: |
+          sudo curl https://github.com/inaka/elvis/releases/download/4.0.0/elvis -o /usr/bin/elvis
+          sudo chmod +x /usr/bin/elvis
+          
+      - name: Compile
+        run: rebar3 compile
+      - name: Cache dialyzer
+        uses: actions/cache@v4
+        env:
+          cache-name: dialyzer-plt-cache
+        with:
+          path: _build/
+          key: ${{ runner.os }}-rebar-build-${{ env.cache-name }}-otp-${{ matrix.erlang.otp }}-${{ hashFiles('rebar.lock') }}
+      - name: Run dialyzer
+        run: rebar3 dialyzer
+      - name: Run linter
+        run: elvis rock --config elvis.config
+      - name: Run tests
+        run: rebar3 eunit --cover
+      - name: Run cover
+        run: rebar3 cover --verbose -m 100
