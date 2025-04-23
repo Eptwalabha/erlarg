@@ -177,40 +177,100 @@ If we rewrite the syntax as such:
 ```
 
 ### Options
-Most program use options:
+In this chapter, we'll see how to set options for our program. Options are the arguments that usually start with a dash (`-`):
 ```bash
-$ tar --list --file FILE
+$ date -d --utc --date=STRING
 ```
-`erlarg` can handle two kind of options:
-- without parameter
-- with parameters
-- with sub options
 
-An option can be defined with `erlarg:opt` as such:
+We'll see how to setup three kinds of option:
+- option without parameter
+- option with parameters
+- option with sub options
+
+#### option without parameter
+```bash
+$ grep -v "bad"
+$ grep --invert-match "bad"
+```
+We can define this option with `erlarg:opt` like so:
 ```erlang
-> FileOpt = erlarg:opt({"-f", "--file"}, file, string),
+> Syntax = [erlarg:opt({"-v", "--invert-match"}, invert_match)].
+> {ok, {Result, _}} = erlarg:parse(["-v"], Syntax),
+[invert_match] % Result
 ```
-This will parse options that are written these ways:
+The first parameter of `erlarg:opt` is the option:
+```erlang
+{"-s", "--long"} % short and long options
+"-s" % only short option
+{"-s", undefined} % same as above
+{undefined, "--long"} % only long option
 ```
--f my-file.tsv
---file my-file.tsv
---file=my-file.tsv
+
+The second parameter is the name of the option, in this case `invert_match`
+
+#### option with parameter(s)
+```bash
+$ date --date 'now -3 days'
 ```
-> [!NOTE]
-> The parser does not currently handle combined short options (i.e: `tar -xzf`).  
-> This feature is expected for future version.
+If your option is expecting a parameter, you can defined it this way:
+```erlang
+> Syntax = [erlarg:opt({"-d", "--date"}, date, string)].
+> {ok, {Result, _}} = erlarg:parse(["--date", "now -3 days"], date, string).
+[{date, "now -3 days"}] % Result
+```
+We have a third parameter that takes the syntax expected by this option, in this case after matching the option with `--date` this option is expecting a string (`"now -3 days"`).  
+If your option is expecting two parameters, you can define it like so:
+```erlang
+erlang:opt({"-d", "--dimension"}, dimension, [int, string]}).
+[{dimension, [3, "inch"]}] % Result for "-d 3 inch"
+```
+You can even use name
+```erlang
+erlang:opt({"-d", "--dimension"}, dimension, [{size, int}, {unit, string}]).
+[{dimension, [{size, 3}, {unit, "inch"}]}] % Result for "-d 3 inch"
+```
 
-The first parameter of `erlarg:opt` is the option used:
-| | short | long | note |
-|---|---|---|---|
-| {"-f", "--file"} | "-f" | "--file" | |
-| "-f" | "-f" | undefined | no long option |
-| { undefined, "--file" } | undefined | "--file" | no short option |
+this table summarizes the formats handled by the parser:
+| format | handled | note|
+|---|---|---|
+| -s | ✅ ||
+| -s <u>VALUE</u> | ✅ ||
+| -s<u>VALUE</u> | ❌ | (planned for future release) |
+| -abc | ❌ | combined short options `a`, `b`, `c` (planned for future release) |
+| --long | ✅ ||
+| --long <u>VALUE</u> | ✅ ||
+| --long=<u>VALUE</u> | ✅ ||
 
-The second parameter is its name in `atom()`
-The third (and optional) parameter is the syntax expected by this option. It can be anything, a type (basic or custom), a list of options, a complex syntax or even `undefined`.
-
-
+#### option with sub-option(s):
+The truth is you can put anything that is a syntax inside the third parameter. Imagine this fictional program:
+```bash
+$ my-script --opt1 -a "param of a" -b "param of opt1" --opt2 …
+```
+The option `--opt1` has two sub-options (`-a` that expects a parameter and `-b` that doesn't). We can define `opt1` this way:
+```erlang
+Opt1 = erlarg:opt({"-o", "--opt1"}, % option
+                  opt1, % option's name 
+                  [erlarg:opt("-a", a, string), % sub-option 1
+                   erlarg:opt("-b", b),  % sub-option 2
+                   {value, string} % the param under the name 'value'
+                  ]).
+{ok, {Result, _}} = erlarg:parse(["--opt1", "-a", "abc", "-b", "def"], Opt1).
+[{opt1, [{a, "abc"}, b, {value, "def"}]}] % Result
+```
+It's getting a little unreadable here… fortunately, you can use a map and `alias`:
+```erlang
+Defs = #{
+    option1 => erlarg:opt({"-o", "--opt1"}, opt1, [opt_a, opt_b, {value, string}]),
+    opt_a => erlarg:opt("-a", a, string),
+    opt_b => erlarg:opt("-b", b)
+},
+Spec = #{
+    syntax => [option1],
+    definitions => Defs
+},
+{ok, {Result, _}} = erlarg:parse(["--opt1", "-a", "abc", "-b", "def"], Spec).
+[{opt1, [{a, "abc"}, b, {value, "def"}]}] % Result
+```
 
 
 ### operator `and`
