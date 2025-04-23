@@ -44,7 +44,12 @@ parse_named_type_test_() ->
      ?_assertEqual([], ?REMAIN(["abc"], {tag, string})),
 
      ?_assertEqual([{tag, 123}], ?RESULT(["123"], {tag, int})),
-     ?_assertEqual([], ?REMAIN(["abc"], {tag, string}))
+     ?_assertEqual([], ?REMAIN(["abc"], {tag, string})),
+
+     ?_assertEqual([{a, [1, "2"]}], ?RESULT(["1", "2"], {a, [int, string]})),
+     ?_assertEqual([{a, ["abc", {a2, 2.3}]}, {b, <<"bin">>}],
+                   ?RESULT(["abc", "2.3", "bin"],
+                           [{a, [string, {a2, float}]}, {b, binary}]))
     ].
 
 parse_opt_test_() ->
