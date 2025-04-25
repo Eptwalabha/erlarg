@@ -70,7 +70,7 @@ parse(_, [], Args, Acc) ->
 parse(_, Syntax, [], Acc) ->
     case Syntax of
         {any, _} -> {Acc, []};
-        _ -> error({missing, arg})
+        _ -> error({missing, Syntax})
     end;
 parse(Specs, {any, Syntax}, Args, Acc) when is_list(Syntax) ->
     case parse(Specs, {first, Syntax}, Args, Acc) of
@@ -85,6 +85,8 @@ parse(Specs, {first, [Item | Syntax]}, Args, Acc) ->
     try parse(Specs, Item, Args, Acc) of
         {Acc2, Args2} -> {Acc2, Args2}
     catch
+        error:{bad_opt, _, _} = Error ->
+            error(Error);
         error:_ ->
             parse(Specs, {first, Syntax}, Args, Acc)
     end;
@@ -99,42 +101,53 @@ parse(_, BaseType, [Arg | Args], Acc)
        BaseType =:= bool; BaseType =:= string; BaseType =:= binary;
        BaseType =:= atom ->
     {[consume(BaseType, Arg) | Acc], Args};
-parse(Specs, OptionName, Args, Acc)
-  when is_atom(OptionName) ->
-    case maps:find(OptionName, maps:get(definitions, Specs, #{})) of
+parse(Specs, Alias, Args, Acc)
+  when is_atom(Alias) ->
+    case maps:find(Alias, maps:get(definitions, Specs, #{})) of
         {ok, #opt{} = Option} ->
             parse(Specs, Option, Args, Acc);
         {ok, Fun} when is_function(Fun, 1) ->
             parse(Specs, Fun, Args, Acc);
         error ->
-            error({unknown, OptionName})
+            error({unknown_alias, Alias})
     end;
 parse(_, #opt{ syntax = undefined } = Option, [Arg | _] = Args, Acc) ->
-    case is_matching_opt(Option, Args) of
-        {true, Args2} -> {[Option#opt.name | Acc], Args2};
-        _ -> error({unhandled, Arg})
-    end;
-parse(Specs, #opt{ syntax = Syntax } = Opt, [Arg | _] = Args, Acc) ->
-    case is_matching_opt(Opt, Args) of
+    case argument_matches_option(Option, Args) of
         {true, Args2} ->
-            {Acc2, Args3} = parse(Specs, Syntax, Args2, []),
-            {[commit_value(Syntax, Opt#opt.name, Acc2) | Acc], Args3};
-        _ -> error({unhandled, Arg})
+            {[Option#opt.name | Acc], Args2};
+        _ ->
+            error({not_opt, Option, Arg})
+    end;
+parse(Specs, #opt{ syntax = Syntax } = Option, [Arg | _] = Args, Acc) ->
+    case argument_matches_option(Option, Args) of
+        {true, Args2} ->
+            try parse(Specs, Syntax, Args2, []) of
+                {Acc2, Args3} ->
+                    Acc3 = [commit_value(Syntax, Option#opt.name, Acc2) | Acc],
+                    {Acc3, Args3}
+            catch
+                error:Error ->
+                    error({bad_opt, Option, Error})
+            end;
+        _ ->
+            error({not_opt, Option, Arg})
     end;
 parse(_, Fun, Args, Acc)
   when is_function(Fun, 1) ->
     case Fun(Args) of
-        {ok, Value, Args2} -> {[Value | Acc], Args2};
-        Error -> error(Error)
+        {ok, Value, Args2} ->
+            {[Value | Acc], Args2};
+        Error ->
+            error(Error)
     end.
 
 
-is_matching_opt(#opt{ short = Short, long = Long }, [Arg | Args])
+argument_matches_option(#opt{ short = Short, long = Long }, [Arg | Args])
   when Arg =:= Short; Arg =:= Long ->
     {true, Args};
-is_matching_opt(#opt{ short = undefined, long = undefined }, Args) ->
+argument_matches_option(#opt{ short = undefined, long = undefined }, Args) ->
     {true, Args};
-is_matching_opt(#opt{ long = Long }, [Arg | Args]) ->
+argument_matches_option(#opt{ long = Long }, [Arg | Args]) ->
     case string:split(Arg, "=") of
         [Long, Value] ->
             {true, [Value | Args]};

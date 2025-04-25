@@ -196,18 +196,46 @@ remaining_args_test_() ->
     ].
 
 
+error_aliases_test_() ->
+    [?_assertEqual({unknown_alias, my_type}, ?ERROR(["a"], [my_type])),
+     ?_assertEqual({unknown_alias, my_type}, ?ERROR(["a"], [{key, my_type}]))
+    ].
+
+
+error_option_badarg_test_() ->
+    SubOption = opt({undefined, "--sub"}, subopt, [string, int]),
+    Option = opt({undefined, "--opt"}, opt, {any, [int, SubOption]}),
+    [{"throws an error if option's missing an argument",
+      ?_assertEqual({bad_opt, opt("-a", name, int), {missing, int}},
+                    ?ERROR(["-a"], opt("-a", name, int)))},
+     {"option fails to cast string into int",
+      ?_assertEqual({bad_opt, opt("-a", name, int), {not_int, "abc"}},
+                    ?ERROR(["-a", "abc"],
+                           [opt("-a", name, int)]))},
+
+     {"option b matches but fails to cast the argument into float",
+      ?_assertEqual({bad_opt, opt("-b", b, {key, float}), {not_float, "abc"}},
+                    ?ERROR(["-b", "abc"],
+                           {any, [opt("-a", a),
+                                  opt("-b", b, {key, float})]}))},
+
+     [{"'" ++ BadArg ++ "' shouldn't match the option '-a'",
+       ?_assertEqual({not_opt, opt("-a"), BadArg},
+                     ?ERROR([BadArg], [opt("-a")]))}
+      || BadArg <- ["-b", "--a", "--not-a", "-a=123"]],
+
+     {"option fails if sub-option fails",
+      ?_assertEqual({bad_opt, Option,
+                     {bad_opt, SubOption, {missing, [int]}}},
+                    ?ERROR(["--opt", "1", "--sub", "2"], [Option]))}
+    ].
+
 error_test_() ->
-    [?_assertEqual({missing, arg}, ?ERROR(["-a"], opt("-a", a, int))),
-     ?_assertEqual({not_int, "a"}, ?ERROR(["1", "a"], [int, int])),
+    [?_assertEqual({not_int, "a"}, ?ERROR(["1", "a"], [int, int])),
      ?_assertEqual({not_int, "1.2"}, ?ERROR(["a", "1.2"], [string, int])),
      ?_assertEqual({not_float, "a"}, ?ERROR(["1.2", "a"], [string, float])),
      ?_assertEqual({not_number, "a"}, ?ERROR(["a"], [number])),
      ?_assertEqual(oops, ?ERROR(["a"], fun (_) -> oops end)),
-     ?_assertEqual({unknown, my_type}, ?ERROR(["a"], [my_type])),
-     ?_assertEqual({unhandled, "--fail"},
-                   ?ERROR(["--fail"], [opt("-a")])),
-     ?_assertEqual({unhandled, "--fail=2"},
-                   ?ERROR(["--fail=2"], [opt("-a")])),
      ?_assertEqual({bad_syntax, undefined}, ?ERROR(["abc"], {tag, undefined}))
     ].
 
