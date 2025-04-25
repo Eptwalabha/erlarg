@@ -168,6 +168,22 @@ parse_option_test_() ->
                    Test(["--a-long=1", "-b", "2", "3", "4"], [a, b]))
     ].
 
+
+parse_match_tag_option_test_() ->
+    OptionA = opt({"-a", "--option-a"}, option_a),
+    OptionB = opt({"-b", "--option-b"}, option_b),
+    OptionC = opt({"-c", "--option-c"}, option_c, string),
+    [?_assertEqual([option_a], ?RESULT(["-a"], OptionA)),
+     ?_assertEqual([option_a], ?RESULT(["--option-a"], OptionA)),
+     ?_assertEqual([option_a, option_b],
+                   ?RESULT(["-ab"], [OptionA, OptionB])),
+     ?_assertEqual([option_a, option_b, option_b, option_a],
+                   ?RESULT(["-abba"], {any, [OptionA, OptionB]})),
+     ?_assertEqual([option_a, option_b, {option_c, "abc"}],
+                   ?RESULT(["-abc", "abc"], [OptionA, OptionB, OptionC]))
+    ].
+
+
 parse_readme_example_test() ->
     Spec = {any, [opt({"-l", "--limit"}, limit, int),
                   opt({"-f", "--format"}, format, binary),
@@ -222,7 +238,7 @@ error_option_badarg_test_() ->
      [{"'" ++ BadArg ++ "' shouldn't match the option '-a'",
        ?_assertEqual({not_opt, opt("-a"), BadArg},
                      ?ERROR([BadArg], [opt("-a")]))}
-      || BadArg <- ["-b", "--a", "--not-a", "-a=123"]],
+      || BadArg <- ["-b", "--a", "--not-a"]],
 
      {"option fails if sub-option fails",
       ?_assertEqual({bad_opt, Option,
