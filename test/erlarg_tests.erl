@@ -119,12 +119,16 @@ parse_any_test_() ->
 
 
 prevent_infinit_loop_test_() ->
-    Aliases = #{
-      a => {infinity, b},
-      b => {infinity, a}
-     },
     {spawn,
-     {timeout, 0.5, ?TEST_ERROR(max_recursion, ["abc"], a, Aliases)}}.
+     {timeout, 0.5,
+      [?TEST_ERROR(max_recursion, ["abc"], a, #{ a => a }),
+       ?TEST_ERROR(max_recursion, ["abc"], a, #{ a => {inf, b}, b => a }),
+       ?TEST_ERROR(max_recursion, ["abc"], a, #{ a => opt(undefined, a, a) }),
+       ?TEST_ERROR(max_recursion, ["abc"],
+                   a,
+                   #{ a => opt(undefined, a, b),
+                      b => {key, c},
+                      c => opt(undefined, c, a) })]}}.
 
 
 parse_first_test_() ->
