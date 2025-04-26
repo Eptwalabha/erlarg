@@ -1,5 +1,5 @@
-# erlarg
-[![erlarg CI](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml/badge.svg)](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml)
+# erlarg - v1.0.0
+[![erlarg CI](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml/badge.svg)](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml)  
 
 An Erlang lib that parsed a list of arguments into structured data.  
 Useful for handling options/parameters of escript
@@ -8,7 +8,9 @@ Useful for handling options/parameters of escript
 
 Add `erlarg` to in the `deps` of your `rebar.config`:
 ```erlang
-{erlarg, {git, "https://github.com/Eptwalabha/erlarg.git", {branch, "master"}}}
+{deps, [{erlarg, "1.0.0"}]}
+% or
+{depts, [{erlarg, {git, "https://github.com/Eptwalabha/erlarg.git", {tag, "v1.0.0"}}}]}
 ```
 If you're building an `escript`, add `erlarg` to the list of apps to include in the binary
 ```erlang
