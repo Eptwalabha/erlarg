@@ -1,10 +1,12 @@
 -module(erlarg).
 
--export([parse/2]).
+-export([parse/2, parse/3]).
 -export([opt/2, opt/3]).
 
 -record(opt, { name, short, long, syntax, doc }).
+-record(state, { depth = 0, aliases = #{} }).
 
+-define(MAX_DEPTH_RECURSION, 1024).
 -define(REV(List), lists:reverse(List)).
 
 -type args() :: [string()].
@@ -37,6 +39,8 @@ opt(Command, Name) ->
       Syntax :: syntax() | undefined,
       Option :: opt().
 
+opt({undefined, undefined}, Name, Syntax) ->
+    {Name, Syntax};
 opt({Short, Long}, Name, Syntax) ->
     #opt{ name = Name,
           short = Short, long = Long,
@@ -47,22 +51,33 @@ opt(Short, Name, Syntax) ->
 
 -spec parse(Args, Syntax) -> Options | Error when
       Args :: args(),
-      Syntax :: map() | syntax(),
+      Syntax :: syntax(),
       Options :: {ok, {any(), args()}},
       Error :: error.
 
-parse(Args, #{ syntax := Syntax } = Specs) ->
-    try parse(Specs, Syntax, Args, []) of
+parse(Args, Syntax) ->
+    parse(Args, Syntax, #{}).
+
+
+-spec parse(Args, Syntax, Aliases) -> Options | Error when
+      Args :: args(),
+      Syntax :: syntax(),
+      Aliases :: map(),
+      Options :: {ok, {any(), args()}},
+      Error :: error.
+
+parse(Args, Syntax, Aliases) ->
+    try parse(#state{ aliases = Aliases }, Syntax, Args, []) of
         {Acc, RemainingArgs} ->
             {ok, {?REV(Acc), RemainingArgs}}
     catch
         error:Error ->
             {error, Error}
-    end;
-parse(Args, Syntax) ->
-    parse(Args, #{ syntax => Syntax }).
+    end.
 
-
+parse(#state{ depth = Depth }, _, _, _)
+  when Depth >= ?MAX_DEPTH_RECURSION ->
+    error(max_recursion);
 parse(_, undefined, _, _) ->
     error({bad_syntax, undefined});
 parse(_, [], Args, Acc) ->
@@ -72,42 +87,44 @@ parse(_, Syntax, [], Acc) ->
         {any, _} -> {Acc, []};
         _ -> error({missing, Syntax})
     end;
-parse(Specs, {any, Syntax}, Args, Acc) when is_list(Syntax) ->
-    case parse(Specs, {first, Syntax}, Args, Acc) of
+parse(State, {any, Syntax}, Args, Acc) when is_list(Syntax) ->
+    case parse(State, {first, Syntax}, Args, Acc) of
         {Acc, Args} -> {Acc, Args};
-        {Acc2, Args2} -> parse(Specs, {any, Syntax}, Args2, Acc2)
+        {Acc2, Args2} -> parse(State, {any, Syntax}, Args2, Acc2)
     end;
-parse(Specs, {any, Syntax}, Args, Acc) ->
-    parse(Specs, {any, [Syntax]}, Args, Acc);
+parse(State, {any, Syntax}, Args, Acc) ->
+    parse(State, {any, [Syntax]}, Args, Acc);
 parse(_, {first, []}, Args, Acc) ->
     {Acc, Args};
-parse(Specs, {first, [Item | Syntax]}, Args, Acc) ->
-    try parse(Specs, Item, Args, Acc) of
+parse(State, {first, [Item | Syntax]}, Args, Acc) ->
+    try parse(State, Item, Args, Acc) of
         {Acc2, Args2} -> {Acc2, Args2}
     catch
         error:{bad_opt, _, _} = Error ->
             error(Error);
         error:_ ->
-            parse(Specs, {first, Syntax}, Args, Acc)
+            parse(State, {first, Syntax}, Args, Acc)
     end;
-parse(Specs, [Item | Syntax], Args, Acc) ->
-    {Acc2, Args2} = parse(Specs, Item, Args, Acc),
-    parse(Specs, Syntax, Args2, Acc2);
-parse(Specs, {Name, Syntax}, Args, Acc) ->
-    {Value, Args2} = parse(Specs, Syntax, Args, []),
+parse(State, [Item | Syntax], Args, Acc) ->
+    {Acc2, Args2} = parse(State, Item, Args, Acc),
+    parse(State, Syntax, Args2, Acc2);
+parse(State, {Name, Syntax}, Args, Acc) ->
+    {Value, Args2} = parse(State, Syntax, Args, []),
     {[commit_value(Syntax, Name, Value) | Acc], Args2};
 parse(_, BaseType, [Arg | Args], Acc)
   when BaseType =:= int; BaseType =:= float; BaseType =:= number;
        BaseType =:= bool; BaseType =:= string; BaseType =:= binary;
        BaseType =:= atom ->
     {[consume(BaseType, Arg) | Acc], Args};
-parse(Specs, Alias, Args, Acc)
+parse(#state{ depth = Depth, aliases = Aliases } = State, Alias, Args, Acc)
   when is_atom(Alias) ->
-    case maps:find(Alias, maps:get(definitions, Specs, #{})) of
+    case maps:find(Alias, Aliases) of
         {ok, #opt{} = Option} ->
-            parse(Specs, Option, Args, Acc);
+            parse(State#state{ depth = Depth + 1 }, Option, Args, Acc);
         {ok, Fun} when is_function(Fun, 1) ->
-            parse(Specs, Fun, Args, Acc);
+            parse(State, Fun, Args, Acc);
+        {ok, Syntax} ->
+            parse(State#state{ depth = Depth + 1 }, Syntax, Args, Acc);
         error ->
             error({unknown_alias, Alias})
     end;
@@ -118,10 +135,13 @@ parse(_, #opt{ syntax = undefined } = Option, [Arg | _] = Args, Acc) ->
         _ ->
             error({not_opt, Option, Arg})
     end;
-parse(Specs, #opt{ syntax = Syntax } = Option, [Arg | _] = Args, Acc) ->
+parse(#state{ depth = Depth } = State,
+      #opt{ syntax = Syntax } = Option,
+      [Arg | _] = Args,
+      Acc) ->
     case argument_matches_option(Option, Args) of
         {true, Args2} ->
-            try parse(Specs, Syntax, Args2, []) of
+            try parse(State#state{ depth = Depth + 1 }, Syntax, Args2, []) of
                 {Acc2, Args3} ->
                     Acc3 = [commit_value(Syntax, Option#opt.name, Acc2) | Acc],
                     {Acc3, Args3}
@@ -144,8 +164,6 @@ parse(_, Fun, Args, Acc)
 
 argument_matches_option(#opt{ short = Short, long = Long }, [Arg | Args])
   when Arg =:= Short; Arg =:= Long ->
-    {true, Args};
-argument_matches_option(#opt{ short = undefined, long = undefined }, Args) ->
     {true, Args};
 argument_matches_option(#opt{ short = [$-, Short], syntax = undefined},
                         [[$-, Short | Arg] | Args]) ->
