@@ -1,5 +1,5 @@
-# erlarg
-[![erlarg CI](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml/badge.svg)](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml)
+# erlarg - v1.0.0
+[![erlarg CI](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml/badge.svg)](https://github.com/Eptwalabha/erlarg/actions/workflows/ci.yml)  
 
 An Erlang lib that parsed a list of arguments into structured data.  
 Useful for handling options/parameters of escript
