@@ -147,6 +147,12 @@ argument_matches_option(#opt{ short = Short, long = Long }, [Arg | Args])
     {true, Args};
 argument_matches_option(#opt{ short = undefined, long = undefined }, Args) ->
     {true, Args};
+argument_matches_option(#opt{ short = [$-, Short], syntax = undefined},
+                        [[$-, Short | Arg] | Args]) ->
+    {true, [[$- | Arg] | Args]};
+argument_matches_option(#opt{ short = [$-, Short]},
+                        [[$-, Short | Arg] | Args]) ->
+    {true, [Arg | Args]};
 argument_matches_option(#opt{ long = Long }, [Arg | Args]) ->
     case string:split(Arg, "=") of
         [Long, Value] ->

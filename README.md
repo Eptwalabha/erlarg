@@ -201,15 +201,16 @@ $ date -d --utc --date=STRING
 Option can have several formats a short one (usualy a dash followed by a letter e.g. `-v`) or long one (double dash and a word e.g. `--version`)
 
 This table summarizes the formats handled/recognized by the parser:
-| format | handled | note|
-|---|---|---|
-| -s | ✅ ||
-| -s <u>VALUE</u> | ✅ ||
-| -s<u>VALUE</u> | ❌ | (planned for future release) |
-| -abc | ❌ | combined short options `a`, `b`, `c` (planned for future release) |
-| --long | ✅ ||
-| --long <u>VALUE</u> | ✅ ||
-| --long=<u>VALUE</u> | ✅ ||
+| format | note|
+|---|---|
+| -s ||
+| -s <u>VALUE</u> ||
+| -s<u>VALUE</u> | same as `-s VALUE`|
+| -abc <u>VALUE</u> | same as `-a -b -c VALUE` |
+| -abc<u>VALUE</u> | same as `-a -b -c VALUE` |
+| --long ||
+| --long <u>VALUE</u> ||
+| --long=<u>VALUE</u> ||
 
 In this chapter, we'll see how to tell the parser how to recognise three kind of options:
 - option without parameter
