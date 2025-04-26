@@ -42,17 +42,8 @@ parse_named_value_test_() ->
     ].
 
 parse_truthy_boolean_test_() ->
-    True = ["true",
-            "t",
-            "1",
-            "1000",
-            "0.00001",
-            "yes",
-            "y",
-            "True",
-            "tRuE",
-            "enabled",
-            "abcd"],
+    True = ["true", "t", "1", "1000", "0.00001", "yes", "y",
+            "True", "tRuE", "enabled", "abcd"],
     [{"'" ++ Arg ++ "' is truthy",
       ?TEST_RESULT([true], [Arg], bool)} || Arg <- True].
 
