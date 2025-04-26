@@ -169,18 +169,39 @@ parse_option_test_() ->
     ].
 
 
-parse_match_tag_option_test_() ->
+parse_match_option_test_() ->
     OptionA = opt({"-a", "--option-a"}, option_a),
     OptionB = opt({"-b", "--option-b"}, option_b),
     OptionC = opt({"-c", "--option-c"}, option_c, string),
     [?_assertEqual([option_a], ?RESULT(["-a"], OptionA)),
      ?_assertEqual([option_a], ?RESULT(["--option-a"], OptionA)),
      ?_assertEqual([option_a, option_b],
-                   ?RESULT(["-ab"], [OptionA, OptionB])),
-     ?_assertEqual([option_a, option_b, option_b, option_a],
-                   ?RESULT(["-abba"], {any, [OptionA, OptionB]})),
-     ?_assertEqual([option_a, option_b, {option_c, "abc"}],
-                   ?RESULT(["-abc", "abc"], [OptionA, OptionB, OptionC]))
+                   ?RESULT(["-a", "-b"], [OptionA, OptionB])),
+     {"sort option combination is allowed",
+      ?_assertEqual([option_a, option_b],
+                    ?RESULT(["-ab"], [OptionA, OptionB]))},
+     {"short option can repeat",
+      ?_assertEqual([option_a, option_b, option_b, option_a],
+                    ?RESULT(["-abba"], {any, [OptionA, OptionB]}))},
+     {"short option combination can end with an option with parameter",
+      ?_assertEqual([option_a, option_b, {option_c, "abc"}],
+                    ?RESULT(["-abc", "abc"], [OptionA, OptionB, OptionC]))},
+     ?_assertEqual([{option_c, "abc"}],
+                   ?RESULT(["-c", "abc"], [OptionC])),
+     ?_assertEqual([{option_c, "abc"}],
+                   ?RESULT(["--option-c=abc"], [OptionC])),
+     ?_assertEqual([{option_c, "abc"}],
+                   ?RESULT(["--option-c", "abc"], [OptionC])),
+     {"format shortVALUE is allowed",
+      ?_assertEqual([{option_c, "abc"}],
+                    ?RESULT(["-cabc"], [OptionC]))},
+     {"short option combined with shortVALUE is allowed",
+      ?_assertEqual([option_a, option_b, {option_c, "b"}],
+                    ?RESULT(["-abcb"], [OptionA, OptionB, OptionC]))},
+
+     {"longVALUE format is not allowed",
+      ?_assertEqual({not_opt, OptionC, "--option-cabc"},
+                    ?ERROR(["--option-cabc"], [OptionC]))}
     ].
 
 
