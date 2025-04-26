@@ -37,6 +37,8 @@ opt(Command, Name) ->
       Syntax :: syntax() | undefined,
       Option :: opt().
 
+opt({undefined, undefined}, Name, Syntax) ->
+    {Name, Syntax};
 opt({Short, Long}, Name, Syntax) ->
     #opt{ name = Name,
           short = Short, long = Long,
@@ -108,6 +110,8 @@ parse(Specs, Alias, Args, Acc)
             parse(Specs, Option, Args, Acc);
         {ok, Fun} when is_function(Fun, 1) ->
             parse(Specs, Fun, Args, Acc);
+        {ok, Syntax} ->
+            parse(Specs, Syntax, Args, Acc);
         error ->
             error({unknown_alias, Alias})
     end;
@@ -144,8 +148,6 @@ parse(_, Fun, Args, Acc)
 
 argument_matches_option(#opt{ short = Short, long = Long }, [Arg | Args])
   when Arg =:= Short; Arg =:= Long ->
-    {true, Args};
-argument_matches_option(#opt{ short = undefined, long = undefined }, Args) ->
     {true, Args};
 argument_matches_option(#opt{ short = [$-, Short], syntax = undefined},
                         [[$-, Short | Arg] | Args]) ->
