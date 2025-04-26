@@ -6,6 +6,7 @@ make all
 while inotifywait --event modify -r src test --exclude '\..*\.swp';
 do
     echo " ======== modified ========"
-    make all
+    make cover
+    make lint
 done
 
