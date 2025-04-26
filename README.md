@@ -4,10 +4,6 @@
 An Erlang lib that parsed a list of arguments into structured data.  
 Useful for handling options/parameters of escript
 
-> [!WARNING]
-> This lib is under development and is likely to change in the future.  
-> If you need a working alternative, you can use [getopt](https://github.com/jcomellas/getopt).
-
 ## Installation
 
 Add `erlarg` to in the `deps` of your `rebar.config`:
