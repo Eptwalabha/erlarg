@@ -11,33 +11,49 @@
 
 -type args() :: [string()].
 -type base_type() :: int | float | number | bool | string | binary | atom.
--type type() :: base_type() | atom().
--type spec() :: map().
+-type custom_type() :: fun((args()) -> {ok, any(), args()} | any()).
+-type type() :: base_type() | custom_type().
+-type option_name() :: {string() | undefined, string() | undefined} | string().
 
 -opaque opt() :: #opt{}.
 -opaque syntax() :: [syntax()] | {any | first, [syntax()]}
                   | type() | {any(), type()}.
 
--export_type([opt/0, syntax/0,
-              spec/0, args/0
-             ]).
+-export_type([opt/0, syntax/0, args/0, option_name/0]).
 
 
--spec opt(Command, Name) -> Option when
-      Command :: string() | undefined
-                 | {string() | undefined, string() | undefined},
+% @doc
+% Create an option `Name' that doesn't have parameter.
+%
+% Example:
+% ```
+% --help % also -h
+% erlarg:opt({"-h", "--help"}, help).
+% '''
+% @end
+-spec opt(Command, Name) -> Return when
+      Command :: option_name() | undefined,
       Name :: atom(),
-      Option :: opt().
+      Return :: opt() | {atom(), syntax()}.
 
 opt(Command, Name) ->
     opt(Command, Name, undefined).
 
--spec opt(Command, Name, Syntax) -> Option when
-      Command :: string() | undefined
-                 | {string() | undefined, string() | undefined},
+
+% @doc
+% Create an option `Name' that must be parsed with `Syntax'.
+%
+% Example:
+% ```
+% date -d 'now'
+% erlarg:opt({"-d", "--date"}, date, string()).
+% '''
+% @end
+-spec opt(Command, Name, Syntax) -> Return when
+      Command :: option_name() | undefined,
       Name :: atom(),
       Syntax :: syntax() | undefined,
-      Option :: opt().
+      Return :: opt() | {atom(), syntax()}.
 
 opt({undefined, undefined}, Name, Syntax) ->
     {Name, Syntax};
@@ -162,6 +178,11 @@ parse(_, Fun, Args, Acc)
     end.
 
 
+-spec argument_matches_option(Option, Args) -> IsMatching when
+      Option :: opt(),
+      Args :: args(),
+      IsMatching :: false | {true, args()}.
+
 argument_matches_option(#opt{ short = Short, long = Long }, [Arg | Args])
   when Arg =:= Short; Arg =:= Long ->
     {true, Args};
@@ -200,6 +221,7 @@ consume(binary, String) ->
 consume(string, String) ->
     String.
 
+
 -spec to_int(String) -> Result when
       String :: string(),
       Result :: integer().
@@ -210,6 +232,7 @@ to_int(String) ->
     catch
         error:_ -> error({not_int, String})
     end.
+
 
 -spec to_float(String) -> Result when
       String :: string(),
@@ -258,7 +281,7 @@ to_bool("n") -> false;
 to_bool("no") -> false;
 to_bool(Arg) ->
     try to_number(Arg) of
-        Float when is_float(Float) -> Float =/= 0.0;
+        Float when is_float(Float) -> Float =/= +0.0;
         Int when is_integer(Int) -> Int =/= 0
     catch
         error:_ -> true
