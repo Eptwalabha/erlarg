@@ -14,6 +14,7 @@ log
 erl_crash.dump
 .rebar
 logs
+doc
 .idea
 *.iml
 rebar3.crashdump

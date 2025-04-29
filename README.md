@@ -150,18 +150,19 @@ Here are all the types currently available :
 | atom | "super-top" | 'super-top' |-|
 
 the `bool` conversion:
+
 | arg | bool | note |
 |---|---|---|
 | "true" | true | case insensitive |
-| "yes" | true ||
+| "yes" | true | |
 | "abcd" | true | any non-empty string |
-| "1" | true ||
-| "0.00001" | true ||
+| "1" | true | |
+| "0.00001" | true | |
 | "false" | false | case insensitive |
-| "no" | false ||
+| "no" | false | |
 | "" | false | empty-string|
-| "0" | false ||
-| "0.0" | false ||
+| "0" | false | |
+| "0.0" | false | |
 
 > [!TIP]
 > converting an argument into `string`, `binary`, `bool` or `atom` it will always succeed.
@@ -201,16 +202,17 @@ $ date -d --utc --date=STRING
 Option can have several formats a short one (a dash followed by a letter eg. `-v`) and/or a long one (double dash and a word eg. `--version`)
 
 This table summarizes the formats handled/recognized by the parser:
-| format | note|
+
+| format | note |
 |---|---|
-| -s ||
-| -s <u>VALUE</u> ||
-| -s<u>VALUE</u> | same as `-s VALUE`|
+| -s | |
+| -s <u>VALUE</u> | |
+| -s<u>VALUE</u> | same as `-s VALUE` |
 | -abc <u>VALUE</u> | same as `-a -b -c VALUE` |
 | -abc<u>VALUE</u> | same as `-a -b -c VALUE` |
-| --long ||
-| --long <u>VALUE</u> ||
-| --long=<u>VALUE</u> ||
+| --long | |
+| --long <u>VALUE</u> | |
+| --long=<u>VALUE</u> | |
 
 In this chapter, we'll see how to tell the parser how to recognise three kind of options:
 - option without parameter
@@ -327,8 +329,8 @@ All elements of the list must succeed in order for the operator to succeed.
 
 | syntax | args | result | note |
 |---|---|---|---|
-| [int, string] | ["1", "a"] | [1, "a"] |-|
-| [int] | ["1", "a"]  | [1]| remaining: ["a"] |
+| [int, string] | ["1", "a"] | [1, "a"] | |
+| [int] | ["1", "a"]  | [1] | remaining: ["a"] |
 | [int, int] | ["1", "a"] | error | "a" isn't an int |
 | [int, string, int] | ["1", "a"] | error | missing a third argument |
 
@@ -341,12 +343,13 @@ format:
 {any, [syntax1, syntax2, …]}
 ```
 The parser will try to consume arguments as long as one of syntax matches. If an element of the syntax fails, the operator fails.  
+
 | syntax | args | result | note |
 |---|---|---|---|
 | {any, [int]} | ["1", "2", "abc"] | [1, 2] | remaining: ["abc"] |
-| {any, [{key, int}]} | ["1", "2"] | [{key, 1}, {key, 2}] |-|
-| {any, [int, {s, string}]} | ["1", "2", "abc", "3"] | [1, 2, {s, "abc"}, 3] |-|
-| {any, [string]} | ["1", "-o", "abc", "3"] | ["1", "-o", "abc", "3"] | even if "-o" is an option|
+| {any, [{key, int}]} | ["1", "2"] | [{key, 1}, {key, 2}] | |
+| {any, [int, {s, string}]} | ["1", "2", "abc", "3"] | [1, 2, {s, "abc"}, 3] | |
+| {any, [string]} | ["1", "-o", "abc", "3"] | ["1", "-o", "abc", "3"] | even if "-o" is an option |
 
 No matter the number of matching element, `any` will always succeed. If nothing matches no arguments will be consumed.
 
@@ -362,12 +365,13 @@ format:
 The parser will return the first element of the syntax to succeed.
 It'll fail if no element matches.  
 The following table use `Args = ["a", "b", "1"]`
-| syntax | result | remaining | note |
-|---|---|---|---|
-| {first, [int]} | [1] | ["2", "a", "3", "b"] |-|
-| {first, [{opt, int}]} | [{opt, 1}] | ["a", "3", "b"] |-|
-| {any, [int, {b, binary}]} | [1, 2, {b, <<"a">>}, 3, {b, <<"b">>}] | [] |-|
-| {any, [string]} | ["1", "2", "a", "3", "b"] | [] |-|
+
+| syntax | result | remaining |
+|---|---|---|
+| {first, [int]} | [1] | ["2", "a", "3", "b"] |
+| {first, [{opt, int}]} | [{opt, 1}] | ["a", "3", "b"] |
+| {any, [int, {b, binary}]} | [1, 2, {b, <<"a">>}, 3, {b, <<"b">>}] | [] |
+| {any, [string]} | ["1", "2", "a", "3", "b"] | [] |
 
 ## Custom types
 
