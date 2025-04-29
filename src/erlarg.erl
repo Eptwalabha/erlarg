@@ -23,7 +23,7 @@
 
 
 % @doc
-% Create an option `Name' that doesn't have parameter.
+% Retuns the specification for an option `Name' that doesn't have parameter.
 %
 % Example:
 % ```
@@ -31,17 +31,18 @@
 % erlarg:opt({"-h", "--help"}, help).
 % '''
 % @end
--spec opt(Command, Name) -> Return when
-      Command :: option_name() | undefined,
+-spec opt(Option, Name) -> Return when
+      Option :: option_name() | undefined,
       Name :: atom(),
       Return :: opt() | {atom(), syntax()}.
 
-opt(Command, Name) ->
-    opt(Command, Name, undefined).
+opt(Option, Name) ->
+    opt(Option, Name, undefined).
 
 
 % @doc
-% Create an option `Name' that must be parsed with `Syntax'.
+% Return the specification for an option `Name' that
+% must be parsed with `Syntax'.
 %
 % Example:
 % ```
@@ -49,8 +50,8 @@ opt(Command, Name) ->
 % erlarg:opt({"-d", "--date"}, date, string()).
 % '''
 % @end
--spec opt(Command, Name, Syntax) -> Return when
-      Command :: option_name() | undefined,
+-spec opt(Option, Name, Syntax) -> Return when
+      Option :: option_name() | undefined,
       Name :: atom(),
       Syntax :: syntax() | undefined,
       Return :: opt() | {atom(), syntax()}.
@@ -65,6 +66,9 @@ opt(Short, Name, Syntax) ->
     opt({Short, undefined}, Name, Syntax).
 
 
+% @doc
+% Parses arguments into a structured data according to a given `syntax'
+% @end
 -spec parse(Args, Syntax) -> Options | Error when
       Args :: args(),
       Syntax :: syntax(),
@@ -75,6 +79,10 @@ parse(Args, Syntax) ->
     parse(Args, Syntax, #{}).
 
 
+% @doc
+% Parses arguments into a structured data according to a given `syntax' and 
+% `aliases'
+% @end
 -spec parse(Args, Syntax, Aliases) -> Options | Error when
       Args :: args(),
       Syntax :: syntax(),
